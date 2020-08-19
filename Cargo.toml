@@ -1,0 +1,12 @@
+[package]
+name = "cargo-breaking"
+version = "0.0.1"
+authors = ["o0Ignition0o <jeremy.lempereur@gmail.com>"]
+edition = "2018"
+description = "checks the diff between your last publish and the current code, and lets you know if there are breaking changes so you can bump to the right version."
+keywords = ["release", "api", "breaking", "change"]
+license = "MIT/Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
