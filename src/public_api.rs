@@ -20,6 +20,14 @@ impl PublicApi {
 
         PublicApi { functions }
     }
+
+    pub(crate) fn functions(&self) -> &HashMap<FnKey, Signature> {
+        &self.functions
+    }
+
+    pub(crate) fn get_fn(&self, key: &FnKey) -> Option<&Signature> {
+        self.functions.get(key)
+    }
 }
 
 #[cfg(test)]
@@ -90,7 +98,7 @@ impl PublicFn {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct FnKey {
+pub(crate) struct FnKey {
     name: Ident,
     path: Path,
 }
