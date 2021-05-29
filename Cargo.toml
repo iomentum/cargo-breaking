@@ -13,3 +13,4 @@ repository = "https://github.com/iomentum/cargo-breaking"
 [dependencies]
 syn = { version = "1.0", features = ["full", "extra-traits", "visit"] }
 anyhow = "1.0"
+git2 = "0.13"
