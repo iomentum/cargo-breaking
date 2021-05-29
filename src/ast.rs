@@ -5,6 +5,12 @@ use std::str::FromStr;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CrateAst(pub File);
 
+impl CrateAst {
+    pub(crate) fn ast(&self) -> &File {
+        &self.0
+    }
+}
+
 impl FromStr for CrateAst {
     type Err = SynError;
 
