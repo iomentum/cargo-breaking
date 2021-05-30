@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result as AnyResult};
 
-use git2::{Branch, BranchType, Repository, StatusOptions};
+use git2::{Branch, BranchType, Repository, StashFlags, StatusOptions};
 
 static DEFAULT_BRANCH_NAME: &str = "main";
 
@@ -69,8 +69,9 @@ impl CrateRepo {
     }
 
     fn stash_push(&mut self) -> AnyResult<()> {
+        let stash_options = StashFlags::INCLUDE_UNTRACKED;
         self.repo
-            .stash_save2(&self.repo.signature()?, None, None)
+            .stash_save2(&self.repo.signature()?, None, Some(stash_options))
             .map(drop)
             .map_err(Into::into)
     }
