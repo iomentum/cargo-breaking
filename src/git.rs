@@ -1,26 +1,31 @@
 use anyhow::{anyhow, Result as AnyResult};
 
-use git2::{Branch, BranchType, Repository};
+use git2::{Branch, BranchType, Repository, StatusOptions};
 
 static DEFAULT_BRANCH_NAME: &str = "main";
 
 pub(crate) struct CrateRepo {
     repo: Repository,
     previous_branch_name: Option<String>,
+    need_stash: bool,
 }
 
 impl CrateRepo {
     pub(crate) fn current() -> AnyResult<CrateRepo> {
         let repo = Repository::open_from_env()?;
+        let need_stash = CrateRepo::need_stash(&repo)?;
 
         Ok(CrateRepo {
             repo,
             previous_branch_name: None,
+            need_stash,
         })
     }
 
     pub(crate) fn checkout_to_main(&mut self) -> AnyResult<()> {
-        self.stash_push()?;
+        if self.need_stash {
+            self.stash_push()?;
+        }
 
         let branch_name = self.current_branch_name()?.name()?.unwrap().to_owned();
 
@@ -39,9 +44,19 @@ impl CrateRepo {
 
         self.checkout_to(previous_branch_name.as_str())?;
 
-        self.stash_pop()?;
+        if self.need_stash {
+            self.stash_pop()?;
+        }
 
         Ok(())
+    }
+
+    fn need_stash(repo: &Repository) -> AnyResult<bool> {
+        let mut opts = StatusOptions::new();
+        let opts = opts.include_ignored(false);
+        let statuses = repo.statuses(Some(opts))?;
+
+        Ok(!statuses.is_empty())
     }
 
     fn current_branch_name(&self) -> AnyResult<Branch> {
