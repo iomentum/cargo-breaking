@@ -1,7 +1,7 @@
 use anyhow::Result;
 use comparator::ApiComparator;
 
-use crate::git::CrateRepo;
+use crate::git::{CrateRepo, GitBackend};
 
 mod ast;
 mod comparator;
@@ -14,11 +14,13 @@ fn main() -> Result<()> {
 
     let current = glue::extract_api()?;
 
-    repo.checkout_to_main()?;
+    dbg!("Checking out to default branch");
+    repo.switch_to(git::DEFAULT_BRANCH_NAME)?;
 
     let previous = glue::extract_api()?;
 
-    repo.checkout_to_previous_branch()?;
+    dbg!("Checking out back to initial branch");
+    repo.switch_back()?;
 
     let api_comparator = ApiComparator::new(previous, current);
 
