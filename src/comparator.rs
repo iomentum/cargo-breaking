@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 use syn::Signature;
 
 use crate::public_api::{FnKey, PublicApi};
@@ -53,4 +55,20 @@ pub(crate) struct ApiCompatibilityDiagnostics<'a> {
     removals: Vec<(&'a FnKey, &'a Signature)>,
     modifications: Vec<(&'a FnKey, &'a Signature, &'a Signature)>,
     additions: Vec<(&'a FnKey, &'a Signature)>,
+}
+
+impl<'a> Display for ApiCompatibilityDiagnostics<'a> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.removals
+            .iter()
+            .try_for_each(|(key, _)| writeln!(f, "- {}", key))?;
+
+        self.modifications
+            .iter()
+            .try_for_each(|(key, _, _)| writeln!(f, "≠ {}", key))?;
+
+        self.additions
+            .iter()
+            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))
+    }
 }

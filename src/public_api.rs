@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter, Result as FmtResult},
+};
 
 use syn::{
     punctuated::Punctuated,
@@ -103,6 +106,17 @@ pub(crate) struct FnKey {
     path: Path,
 }
 
+impl Display for FnKey {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.path
+            .segments
+            .iter()
+            .try_for_each(|segment| write!(f, "{}::", segment.ident))?;
+
+        write!(f, "{}", self.name)
+    }
+}
+
 #[cfg(test)]
 impl Parse for FnKey {
     fn parse(input: ParseStream) -> ParseResult<Self> {
@@ -198,6 +212,30 @@ mod tests {
             assert_eq!(left_val, right_val);
 
             Ok(())
+        }
+    }
+
+    mod fn_key {
+        use super::*;
+
+        #[test]
+        fn display_impl_1() {
+            let path = parse_str("path::foo").unwrap();
+            let name = parse_str("bar").unwrap();
+
+            let k = FnKey { path, name };
+
+            assert_eq!(k.to_string(), "path::foo::bar");
+        }
+
+        #[test]
+        fn display_impl_2() {
+            let path = parse_str("foo").unwrap();
+            let name = parse_str("bar").unwrap();
+
+            let k = FnKey { path, name };
+
+            assert_eq!(k.to_string(), "foo::bar");
         }
     }
 }
