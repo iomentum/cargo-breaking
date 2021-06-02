@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use semver::{BuildMetadata, Prerelease, Version};
 use syn::Signature;
 
 use crate::public_api::{FnKey, PublicApi};
@@ -70,5 +71,58 @@ impl<'a> Display for ApiCompatibilityDiagnostics<'a> {
         self.additions
             .iter()
             .try_for_each(|(key, _)| writeln!(f, "+ {}", key))
+    }
+}
+
+impl<'a> ApiCompatibilityDiagnostics<'a> {
+    pub(crate) fn guess_next_version(&self, mut v: Version) -> Version {
+        // TODO: handle pre and build data
+        if !v.pre.is_empty() {
+            eprintln!("Warning: cargo-breaking does not handle pre-release identifiers");
+            Self::clear_pre(&mut v);
+        }
+
+        if !v.build.is_empty() {
+            eprintln!("Warning: cargo-breaking does not handle build metadata");
+            Self::clear_build(&mut v);
+        }
+
+        if self.contains_breaking_changes() {
+            Self::next_major(&mut v);
+        } else if self.contains_additions() {
+            Self::next_minor(&mut v);
+        } else {
+            Self::next_patch(&mut v);
+        }
+
+        v
+    }
+
+    fn clear_pre(v: &mut Version) {
+        v.pre = Prerelease::EMPTY;
+    }
+
+    fn clear_build(v: &mut Version) {
+        v.build = BuildMetadata::EMPTY;
+    }
+
+    fn contains_breaking_changes(&self) -> bool {
+        !self.removals.is_empty() || !self.modifications.is_empty()
+    }
+
+    fn contains_additions(&self) -> bool {
+        !self.additions.is_empty()
+    }
+
+    fn next_major(v: &mut Version) {
+        v.major += 1;
+    }
+
+    fn next_minor(v: &mut Version) {
+        v.minor += 1;
+    }
+
+    fn next_patch(v: &mut Version) {
+        v.patch += 1;
     }
 }
