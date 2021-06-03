@@ -116,10 +116,13 @@ impl<'a> ApiCompatibilityDiagnostics<'a> {
 
     fn next_major(v: &mut Version) {
         v.major += 1;
+        v.minor = 0;
+        v.patch = 0;
     }
 
     fn next_minor(v: &mut Version) {
         v.minor += 1;
+        v.patch = 0;
     }
 
     fn next_patch(v: &mut Version) {
