@@ -1,9 +1,9 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use semver::{BuildMetadata, Prerelease, Version};
-use syn::Signature;
+use syn::{Generics, Signature};
 
-use crate::public_api::{FnKey, PublicApi};
+use crate::public_api::{FnKey, PublicApi, StructureKey};
 
 pub(crate) struct ApiComparator {
     previous: PublicApi,
@@ -16,25 +16,36 @@ impl ApiComparator {
     }
 
     pub(crate) fn run(&self) -> ApiCompatibilityDiagnostics {
-        let removals = self.removals().collect();
-        let modifications = self.modifications().collect();
-        let additions = self.additions().collect();
+        let function_removals = self.function_removals().collect();
+        let function_modifications = self.function_modifications().collect();
+        let function_additions = self.function_additions().collect();
+
+        let structure_removals = self.structure_removals().collect();
+        let structure_additions = self.structure_additions().collect();
+        let structure_modifications = self.structure_modifications().collect();
 
         ApiCompatibilityDiagnostics {
-            removals,
-            modifications,
-            additions,
+            function_removals,
+            structure_removals,
+
+            function_modifications,
+            structure_modifications,
+
+            function_additions,
+            structure_additions,
         }
     }
 
-    fn removals(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
+    fn function_removals(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
         self.previous
             .functions()
             .iter()
             .filter(move |(k, _)| self.current.get_fn(k).is_none())
     }
 
-    fn modifications(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature, &'_ Signature)> {
+    fn function_modifications(
+        &self,
+    ) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature, &'_ Signature)> {
         self.previous
             .functions()
             .iter()
@@ -43,34 +54,80 @@ impl ApiComparator {
             .filter(move |(_, prev_sig, curr_sig)| prev_sig != curr_sig)
     }
 
-    fn additions(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
+    fn function_additions(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
         self.current
             .functions()
             .iter()
             .filter(move |(k, _)| self.previous.get_fn(k).is_none())
     }
+
+    fn structure_removals(&self) -> impl Iterator<Item = (&'_ StructureKey, &Generics)> {
+        self.previous
+            .structures()
+            .iter()
+            .filter(move |(k, _)| self.current.get_structure(k).is_none())
+    }
+
+    fn structure_modifications(
+        &self,
+    ) -> impl Iterator<Item = (&StructureKey, &Generics, &Generics)> {
+        self.previous
+            .structures()
+            .iter()
+            .filter_map(move |(k, prev_struct)| {
+                Some((k, prev_struct)).zip(self.current.get_structure(k))
+            })
+            .map(|((k, prev_struct), curr_struct)| (k, prev_struct, curr_struct))
+            .filter(move |(_, prev_struct, curr_struct)| prev_struct != curr_struct)
+    }
+
+    fn structure_additions(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
+        self.current
+            .structures()
+            .iter()
+            .filter(move |(k, _)| self.previous.get_structure(k).is_none())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ApiCompatibilityDiagnostics<'a> {
-    removals: Vec<(&'a FnKey, &'a Signature)>,
-    modifications: Vec<(&'a FnKey, &'a Signature, &'a Signature)>,
-    additions: Vec<(&'a FnKey, &'a Signature)>,
+    function_removals: Vec<(&'a FnKey, &'a Signature)>,
+    structure_removals: Vec<(&'a StructureKey, &'a Generics)>,
+
+    function_modifications: Vec<(&'a FnKey, &'a Signature, &'a Signature)>,
+    structure_modifications: Vec<(&'a StructureKey, &'a Generics, &'a Generics)>,
+
+    function_additions: Vec<(&'a FnKey, &'a Signature)>,
+    structure_additions: Vec<(&'a StructureKey, &'a Generics)>,
 }
 
 impl<'a> Display for ApiCompatibilityDiagnostics<'a> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        self.removals
+        self.function_removals
             .iter()
             .try_for_each(|(key, _)| writeln!(f, "- {}", key))?;
 
-        self.modifications
+        self.structure_removals
+            .iter()
+            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
+
+        self.function_modifications
             .iter()
             .try_for_each(|(key, _, _)| writeln!(f, "≠ {}", key))?;
 
-        self.additions
+        self.structure_modifications
             .iter()
-            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))
+            .try_for_each(|(key, _, _)| writeln!(f, "≠ {}", key))?;
+
+        self.function_additions
+            .iter()
+            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
+
+        self.structure_additions
+            .iter()
+            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
+
+        Ok(())
     }
 }
 
@@ -107,11 +164,14 @@ impl<'a> ApiCompatibilityDiagnostics<'a> {
     }
 
     fn contains_breaking_changes(&self) -> bool {
-        !self.removals.is_empty() || !self.modifications.is_empty()
+        !self.function_removals.is_empty()
+            || !self.function_modifications.is_empty()
+            || !self.structure_removals.is_empty()
+            || !self.structure_removals.is_empty()
     }
 
     fn contains_additions(&self) -> bool {
-        !self.additions.is_empty()
+        !self.function_additions.is_empty() || !self.structure_additions.is_empty()
     }
 
     fn next_major(v: &mut Version) {

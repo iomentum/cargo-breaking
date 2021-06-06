@@ -6,12 +6,13 @@ use std::{
 use syn::{
     punctuated::Punctuated,
     visit::{visit_item_mod, Visit},
-    Expr, Ident, ItemFn, ItemMod, Path, PathSegment, Signature,
+    Expr, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PublicApi {
     functions: HashMap<FnKey, Signature>,
+    structures: HashMap<StructureKey, Generics>,
 }
 
 impl PublicApi {
@@ -19,9 +20,15 @@ impl PublicApi {
         let mut visitor = AstVisitor::new();
         visitor.visit_file(program.ast());
 
-        let functions = visitor.0;
-
-        PublicApi { functions }
+        let AstVisitor {
+            functions,
+            structures,
+            ..
+        } = visitor;
+        PublicApi {
+            functions,
+            structures,
+        }
     }
 
     pub(crate) fn functions(&self) -> &HashMap<FnKey, Signature> {
@@ -31,6 +38,14 @@ impl PublicApi {
     pub(crate) fn get_fn(&self, key: &FnKey) -> Option<&Signature> {
         self.functions.get(key)
     }
+
+    pub(crate) fn structures(&self) -> &HashMap<StructureKey, Generics> {
+        &self.structures
+    }
+
+    pub(crate) fn get_structure(&self, key: &StructureKey) -> Option<&Generics> {
+        self.structures.get(key)
+    }
 }
 
 #[cfg(test)]
@@ -38,7 +53,11 @@ use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
 use crate::ast::CrateAst;
 
-struct AstVisitor(HashMap<FnKey, Signature>, Path);
+struct AstVisitor {
+    functions: HashMap<FnKey, Signature>,
+    structures: HashMap<StructureKey, Generics>,
+    path: Path,
+}
 
 impl AstVisitor {
     fn new() -> AstVisitor {
@@ -47,16 +66,27 @@ impl AstVisitor {
             segments: Punctuated::new(),
         };
 
-        AstVisitor(HashMap::new(), path)
+        AstVisitor {
+            functions: HashMap::new(),
+            structures: HashMap::new(),
+            path,
+        }
     }
 }
 
 impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_item_fn(&mut self, i: &'ast ItemFn) {
-        let (k, v) = PublicFn::from(i.clone(), self.1.clone()).into_key_val();
+        let (k, v) = PublicFn::from(i.clone(), self.path.clone()).into_key_val();
 
-        let tmp = self.0.insert(k, v);
+        let tmp = self.functions.insert(k, v);
         assert!(tmp.is_none(), "A function is defined twice");
+    }
+
+    fn visit_item_struct(&mut self, i: &'ast ItemStruct) {
+        let (k, v) = PublicStructure::from(i.clone(), self.path.clone()).into_key_val();
+
+        let tmp = self.structures.insert(k, v);
+        assert!(tmp.is_none(), "A structure is defined twice");
     }
 
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
@@ -64,11 +94,11 @@ impl<'ast> Visit<'ast> for AstVisitor {
             ident: i.ident.clone(),
             arguments: syn::PathArguments::None,
         };
-        self.1.segments.push(last_segment);
+        self.path.segments.push(last_segment);
 
         visit_item_mod(self, i);
 
-        self.1.segments.pop().unwrap();
+        self.path.segments.pop().unwrap();
     }
 
     fn visit_expr(&mut self, _: &'ast Expr) {}
@@ -127,6 +157,73 @@ impl Parse for FnKey {
     }
 }
 
+// TODO: handle public fields
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PublicStructure {
+    path: Path,
+    name: Ident,
+    generics: Generics,
+}
+
+impl PublicStructure {
+    // TODO: handle visitility
+    fn from(s_struct: ItemStruct, path: Path) -> PublicStructure {
+        let name = s_struct.ident;
+        let generics = s_struct.generics;
+
+        PublicStructure {
+            path,
+            name,
+            generics,
+        }
+    }
+
+    fn into_key_val(self) -> (StructureKey, Generics) {
+        let PublicStructure {
+            path,
+            name,
+            generics,
+        } = self;
+        let k = StructureKey { path, name };
+        let v = generics;
+
+        (k, v)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct StructureKey {
+    path: Path,
+    name: Ident,
+}
+
+impl Display for StructureKey {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.path
+            .segments
+            .iter()
+            .try_for_each(|segment| write!(f, "{}::", segment.ident))?;
+
+        write!(f, "{}", self.name)
+    }
+}
+
+#[cfg(test)]
+impl Parse for StructureKey {
+    fn parse(input: ParseStream) -> ParseResult<StructureKey> {
+        let mut path = Path::parse(input)?;
+        let name = path.segments.pop().unwrap().value().ident.clone();
+
+        let last_segment = path.segments.pop();
+
+        if let Some(last_segment) = last_segment {
+            path.segments.push(last_segment.value().clone());
+        }
+
+        Ok(StructureKey { name, path })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -176,6 +273,22 @@ mod tests {
             let mut visitor = AstVisitor::new();
 
             visitor.visit_file(&ast);
+        }
+
+        #[test]
+        fn adds_structure() {
+            let ast = CrateAst::from_str("struct A;").unwrap();
+            let generics = parse_str("").unwrap();
+
+            let public_api = PublicApi::from_ast(&ast);
+
+            assert_eq!(public_api.structures.len(), 1);
+
+            let k = parse_str("A").unwrap();
+            let left = public_api.structures.get(&k);
+            let right = Some(&generics);
+
+            assert_eq!(left, right);
         }
     }
 
@@ -236,6 +349,72 @@ mod tests {
             let k = FnKey { path, name };
 
             assert_eq!(k.to_string(), "foo::bar");
+        }
+    }
+
+    fn sample_struct() -> ItemStruct {
+        parse_str("struct Foo<T> { f: b }").unwrap()
+    }
+
+    mod public_struct {
+        use super::*;
+
+        #[test]
+        fn from_struct() {
+            let left = PublicStructure::from(sample_struct(), sample_path());
+            let right = PublicStructure {
+                name: parse_str("Foo").unwrap(),
+                path: sample_path(),
+                generics: parse_str("<T>").unwrap(),
+            };
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn to_key_val() {
+            let public_struct = PublicStructure::from(sample_struct(), sample_path());
+
+            let (left_key, left_val) = public_struct.into_key_val();
+
+            let right_key = StructureKey {
+                name: parse_str("Foo").unwrap(),
+                path: sample_path(),
+            };
+
+            let right_val = parse_str("<T>").unwrap();
+
+            assert_eq!(left_key, right_key);
+            assert_eq!(left_val, right_val);
+        }
+    }
+
+    mod structure_key {
+        use super::*;
+
+        #[test]
+        fn parse_no_generics() {
+            let left = parse_str::<StructureKey>("foo::bar::Baz").unwrap();
+            let right = StructureKey {
+                path: parse_str("foo::bar").unwrap(),
+                name: parse_str("Baz").unwrap(),
+            };
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn parse_small() {
+            let left = parse_str::<StructureKey>("Baz").unwrap();
+            let right = StructureKey {
+                path: Path {
+                    leading_colon: None,
+                    segments: Punctuated::new(),
+                },
+                name: parse_str("Baz").unwrap(),
+            };
+
+            assert_eq!(left, right);
         }
     }
 }
