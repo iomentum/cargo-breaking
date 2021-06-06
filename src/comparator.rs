@@ -87,7 +87,7 @@ impl ApiComparator {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ApiCompatibilityDiagnostics<'a> {
     function_removals: Vec<(&'a FnKey, &'a Signature)>,
     structure_removals: Vec<(&'a StructureKey, &'a Generics)>,
@@ -133,12 +133,16 @@ impl ApiCompatibilityDiagnostics<'_> {
     pub(crate) fn guess_next_version(&self, mut v: Version) -> Version {
         // TODO: handle pre and build data
         if !v.pre.is_empty() {
+            #[cfg(not(test))]
             eprintln!("Warning: cargo-breaking does not handle pre-release identifiers");
+
             Self::clear_pre(&mut v);
         }
 
         if !v.build.is_empty() {
+            #[cfg(not(test))]
             eprintln!("Warning: cargo-breaking does not handle build metadata");
+
             Self::clear_build(&mut v);
         }
 
@@ -164,6 +168,7 @@ impl ApiCompatibilityDiagnostics<'_> {
     fn contains_breaking_changes(&self) -> bool {
         !self.function_removals.is_empty()
             || !self.function_modifications.is_empty()
+            || !self.structure_modifications.is_empty()
             || !self.structure_removals.is_empty()
             || !self.structure_removals.is_empty()
     }
@@ -185,5 +190,264 @@ impl ApiCompatibilityDiagnostics<'_> {
 
     fn next_patch(v: &mut Version) {
         v.patch += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use syn::parse_str;
+
+    use super::*;
+
+    fn function_key_1() -> FnKey {
+        parse_str("foo::bar::baz").unwrap()
+    }
+
+    fn structure_key_1() -> StructureKey {
+        parse_str("foo::bar::Baz").unwrap()
+    }
+
+    fn function_signature_1() -> Signature {
+        parse_str("fn baz(n: usize)").unwrap()
+    }
+
+    fn function_signature_2() -> Signature {
+        parse_str("fn baz(n: u32) -> u32").unwrap()
+    }
+
+    fn generics_1() -> Generics {
+        parse_str("<>").unwrap()
+    }
+
+    fn generics_2() -> Generics {
+        parse_str("<T, E>").unwrap()
+    }
+
+    macro_rules! compatibility_diag {
+        ($name:ident: empty) => {
+            let $name = ApiCompatibilityDiagnostics::default();
+        };
+
+        ($name:ident: function_removal) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = function_key_1();
+            let tmp_2 = function_signature_1();
+
+            $name.function_removals.push((&tmp_1, &tmp_2));
+
+            let $name = $name;
+        };
+
+        ($name:ident: structure_removal) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = structure_key_1();
+            let tmp_2 = generics_1();
+
+            $name.structure_removals.push((&tmp_1, &tmp_2));
+
+            let $name = $name;
+        };
+
+        ($name:ident: function_modification) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = function_key_1();
+            let tmp_2 = function_signature_1();
+            let tmp_3 = function_signature_2();
+
+            $name.function_modifications.push((&tmp_1, &tmp_2, &tmp_3));
+
+            let $name = $name;
+        };
+
+        ($name:ident: structure_modification) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = structure_key_1();
+            let tmp_2 = generics_1();
+            let tmp_3 = generics_2();
+
+            $name.structure_modifications.push((&tmp_1, &tmp_2, &tmp_3));
+
+            let $name = $name;
+        };
+
+        ($name:ident: function_addition) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = function_key_1();
+            let tmp_2 = function_signature_1();
+
+            $name.function_additions.push((&tmp_1, &tmp_2));
+
+            let $name = $name;
+        };
+
+        ($name:ident: structure_addition) => {
+            let mut $name = ApiCompatibilityDiagnostics::default();
+            let tmp_1 = structure_key_1();
+            let tmp_2 = generics_1();
+
+            $name.structure_additions.push((&tmp_1, &tmp_2));
+
+            let $name = $name;
+        };
+    }
+
+    mod removal {
+        use super::*;
+
+        #[test]
+        fn function_is_breaking() {
+            compatibility_diag!(comp: function_removal);
+            assert!(comp.contains_breaking_changes());
+        }
+
+        #[test]
+        fn structure_is_breaking() {
+            compatibility_diag!(comp: structure_removal);
+            assert!(comp.contains_breaking_changes());
+        }
+
+        #[test]
+        fn is_not_addition() {
+            compatibility_diag!(comp: function_removal);
+            assert!(!comp.contains_additions());
+
+            compatibility_diag!(comp: structure_removal);
+            assert!(!comp.contains_additions());
+        }
+    }
+
+    mod modification {
+        use super::*;
+
+        #[test]
+        fn function_is_breaking() {
+            compatibility_diag!(comp: function_modification);
+            assert!(comp.contains_breaking_changes());
+        }
+
+        #[test]
+        fn structure_is_breaking() {
+            compatibility_diag!(comp: structure_modification);
+            assert!(comp.contains_breaking_changes());
+        }
+
+        #[test]
+        fn is_not_addition() {
+            compatibility_diag!(comp: function_modification);
+            assert!(!comp.contains_additions());
+
+            compatibility_diag!(comp: structure_modification);
+            assert!(!comp.contains_additions());
+        }
+    }
+
+    mod addition {
+        use super::*;
+
+        #[test]
+        fn is_not_breaking() {
+            compatibility_diag!(comp: function_addition);
+            assert!(!comp.contains_breaking_changes());
+
+            compatibility_diag!(comp: structure_addition);
+            assert!(!comp.contains_breaking_changes());
+        }
+
+        // TODO: rename addition -> non-breaking
+        #[test]
+        fn function_is_addition() {
+            compatibility_diag!(comp: function_addition);
+            assert!(comp.contains_additions());
+        }
+
+        #[test]
+        fn structure_is_addition() {
+            compatibility_diag!(comp: structure_addition);
+            assert!(comp.contains_additions());
+        }
+    }
+
+    mod no_changes {
+        use super::*;
+
+        #[test]
+        fn is_not_breaking() {
+            compatibility_diag!(comp: empty);
+            assert!(!comp.contains_breaking_changes());
+        }
+
+        #[test]
+        fn is_not_addition() {
+            compatibility_diag!(comp: empty);
+            assert!(!comp.contains_additions());
+        }
+    }
+
+    mod guess_next_version {
+        use super::*;
+
+        fn sample_version() -> Version {
+            Version::parse("3.2.3").unwrap()
+        }
+
+        fn version_with_prerelease() -> Version {
+            Version::parse("3.2.3-pre1").unwrap()
+        }
+
+        fn version_with_build() -> Version {
+            Version::parse("3.2.3+20160325").unwrap()
+        }
+
+        #[test]
+        fn breaking_changes_effects() {
+            compatibility_diag!(comp_1: function_removal);
+            compatibility_diag!(comp_2: structure_removal);
+            compatibility_diag!(comp_3: function_modification);
+            compatibility_diag!(comp_4: structure_modification);
+
+            let comps = [comp_1, comp_2, comp_3, comp_4];
+
+            for comp in &comps {
+                let next_version = comp.guess_next_version(sample_version());
+                assert_eq!(next_version, Version::parse("4.0.0").unwrap())
+            }
+        }
+
+        #[test]
+        fn additions_effects() {
+            compatibility_diag!(comp_1: function_addition);
+            compatibility_diag!(comp_2: structure_addition);
+
+            let comps = [comp_1, comp_2];
+
+            for comp in &comps {
+                let next_version = comp.guess_next_version(sample_version());
+                assert_eq!(next_version, Version::parse("3.3.0").unwrap());
+            }
+        }
+
+        #[test]
+        fn no_changes_effects() {
+            compatibility_diag!(comp: empty);
+
+            let next_version = comp.guess_next_version(sample_version());
+            assert_eq!(next_version, Version::parse("3.2.4").unwrap());
+        }
+
+        #[test]
+        fn pre_is_cleared() {
+            compatibility_diag!(comp: empty);
+
+            let next_version = comp.guess_next_version(version_with_prerelease());
+            assert_eq!(next_version, Version::parse("3.2.4").unwrap());
+        }
+
+        #[test]
+        fn build_is_cleared() {
+            compatibility_diag!(comp: empty);
+
+            let next_version = comp.guess_next_version(version_with_build());
+            assert_eq!(next_version, Version::parse("3.2.4").unwrap())
+        }
     }
 }
