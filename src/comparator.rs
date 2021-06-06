@@ -36,16 +36,14 @@ impl ApiComparator {
         }
     }
 
-    fn function_removals(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
+    fn function_removals(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
         self.previous
             .functions()
             .iter()
             .filter(move |(k, _)| self.current.get_fn(k).is_none())
     }
 
-    fn function_modifications(
-        &self,
-    ) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature, &'_ Signature)> {
+    fn function_modifications(&self) -> impl Iterator<Item = (&FnKey, &Signature, &Signature)> {
         self.previous
             .functions()
             .iter()
@@ -54,14 +52,14 @@ impl ApiComparator {
             .filter(move |(_, prev_sig, curr_sig)| prev_sig != curr_sig)
     }
 
-    fn function_additions(&self) -> impl Iterator<Item = (&'_ FnKey, &'_ Signature)> {
+    fn function_additions(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
         self.current
             .functions()
             .iter()
             .filter(move |(k, _)| self.previous.get_fn(k).is_none())
     }
 
-    fn structure_removals(&self) -> impl Iterator<Item = (&'_ StructureKey, &Generics)> {
+    fn structure_removals(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
         self.previous
             .structures()
             .iter()
@@ -101,7 +99,7 @@ pub(crate) struct ApiCompatibilityDiagnostics<'a> {
     structure_additions: Vec<(&'a StructureKey, &'a Generics)>,
 }
 
-impl<'a> Display for ApiCompatibilityDiagnostics<'a> {
+impl Display for ApiCompatibilityDiagnostics<'_> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         self.function_removals
             .iter()
@@ -131,7 +129,7 @@ impl<'a> Display for ApiCompatibilityDiagnostics<'a> {
     }
 }
 
-impl<'a> ApiCompatibilityDiagnostics<'a> {
+impl ApiCompatibilityDiagnostics<'_> {
     pub(crate) fn guess_next_version(&self, mut v: Version) -> Version {
         // TODO: handle pre and build data
         if !v.pre.is_empty() {
