@@ -67,6 +67,16 @@ impl ApiComparator {
     }
 }
 
+#[cfg(test)]
+impl ApiComparator {
+    fn from_strs(prev: &str, curr: &str) -> ApiComparator {
+        let previous = PublicApi::from_str(prev);
+        let current = PublicApi::from_str(curr);
+
+        ApiComparator { previous, current }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ApiCompatibilityDiagnostics<'a> {
     function_removals: Vec<(&'a FnKey, &'a Signature)>,

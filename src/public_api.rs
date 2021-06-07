@@ -41,6 +41,16 @@ impl PublicApi {
 }
 
 #[cfg(test)]
+impl PublicApi {
+    pub(crate) fn from_str(s: &str) -> PublicApi {
+        use std::str::FromStr;
+
+        let ast = CrateAst::from_str(s).unwrap();
+        PublicApi::from_ast(&ast)
+    }
+}
+
+#[cfg(test)]
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
 use crate::ast::CrateAst;
