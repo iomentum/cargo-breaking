@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{bail, Result as AnyResult};
+use anyhow::{bail, Context, Result as AnyResult};
 use syn::Error as SynError;
 
 use crate::{ast::CrateAst, public_api::PublicApi};
@@ -19,16 +19,22 @@ pub(crate) fn extract_api() -> AnyResult<PublicApi> {
         .args(&["-Z", "unpretty=everybody_loops"])
         .arg("--emit=mir")
         .output()
-        .expect("rustc invocation failed");
+        .context("Failed to run `cargo rustc`")?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8(output.stderr).map_err(|_| InvalidRustcOutputEncoding)?;
+        let stderr = String::from_utf8(output.stderr)
+            .map_err(|_| InvalidRustcOutputEncoding)
+            .context("Failed to get rustc error message")?;
         bail!(stderr);
     }
 
-    let expanded_code = String::from_utf8(output.stdout).map_err(|_| InvalidRustcOutputEncoding)?;
+    let expanded_code = String::from_utf8(output.stdout)
+        .map_err(|_| InvalidRustcOutputEncoding)
+        .context("Failed to get rustc-expanded crate code")?;
 
-    let ast = CrateAst::from_str(&expanded_code).map_err(InvalidRustcAst)?;
+    let ast = CrateAst::from_str(&expanded_code)
+        .map_err(InvalidRustcAst)
+        .context("Failed to parse rustc-provided crate AST")?;
 
     let api = PublicApi::from_ast(&ast);
 

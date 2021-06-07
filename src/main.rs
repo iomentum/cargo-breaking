@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use comparator::ApiComparator;
 
 use crate::git::{CrateRepo, GitBackend};
@@ -11,16 +11,18 @@ mod manifest;
 mod public_api;
 
 fn main() -> Result<()> {
-    let mut repo = CrateRepo::current()?;
+    let mut repo = CrateRepo::current().context("Failed to fetch repository data")?;
 
-    let current_api = glue::extract_api()?;
-    let version = manifest::get_crate_version()?;
+    let current_api = glue::extract_api().context("Failed to get crate API")?;
+    let version = manifest::get_crate_version().context("Failed to get crate version")?;
 
-    repo.switch_to(git::DEFAULT_BRANCH_NAME)?;
+    repo.switch_to(git::DEFAULT_BRANCH_NAME)
+        .with_context(|| format!("Failed to checkout to `{}`", git::DEFAULT_BRANCH_NAME))?;
 
-    let previous_api = glue::extract_api()?;
+    let previous_api = glue::extract_api().context("Failed to get crate API")?;
 
-    repo.switch_back()?;
+    repo.switch_back()
+        .context("Failed to go back to initial branch")?;
 
     let api_comparator = ApiComparator::new(previous_api, current_api);
 

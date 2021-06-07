@@ -1,4 +1,4 @@
-use anyhow::Result as AnyResult;
+use anyhow::{Context, Result as AnyResult};
 
 use git2::{Repository, StashFlags, StatusOptions};
 
@@ -7,12 +7,16 @@ pub(crate) static DEFAULT_BRANCH_NAME: &str = "main";
 pub(crate) trait GitBackend: Sized {
     fn switch_to(&mut self, id: &str) -> AnyResult<()> {
         if self.needs_stash() {
-            self.stash_push()?;
+            self.stash_push().context("Failed to stash changes")?;
         }
 
-        let branch_name = self.head_name()?.expect("Not currently on a branch");
+        let branch_name = self
+            .head_name()
+            .context("Failed to get HEAD name")?
+            .expect("Not currently on a branch");
 
-        self.checkout_to(id)?;
+        self.checkout_to(id)
+            .with_context(|| format!("Failed to checkout to {}", id))?;
         self.set_previous_branch(branch_name.as_str());
 
         Ok(())
@@ -24,10 +28,12 @@ pub(crate) trait GitBackend: Sized {
             .expect("Previous branch is not set")
             .to_owned();
 
-        self.checkout_to(previous_branch.as_str())?;
+        self.checkout_to(previous_branch.as_str())
+            .with_context(|| format!("Failed to checkout to {}", previous_branch))?;
 
         if self.needs_stash() {
-            self.stash_pop()?;
+            self.stash_pop()
+                .context("Failed to restore initial repository state")?;
         }
 
         Ok(())
@@ -53,8 +59,9 @@ pub(crate) struct CrateRepo {
 
 impl GitBackend for CrateRepo {
     fn current() -> AnyResult<CrateRepo> {
-        let repo = Repository::open_from_env()?;
-        let needs_stash = CrateRepo::needs_stash(&repo)?;
+        let repo = Repository::open_from_env().context("Failed to open repository")?;
+        let needs_stash =
+            CrateRepo::needs_stash(&repo).context("Failed to determine if stash is needed")?;
 
         Ok(CrateRepo {
             repo,
@@ -88,25 +95,39 @@ impl GitBackend for CrateRepo {
 
     fn stash_push(&mut self) -> AnyResult<()> {
         let stash_options = StashFlags::INCLUDE_UNTRACKED;
+        let signature = self
+            .repo
+            .signature()
+            .context("Failed to create user signature")?;
+
         self.repo
-            .stash_save2(&self.repo.signature()?, None, Some(stash_options))
+            .stash_save2(&signature, None, Some(stash_options))
             .map(drop)
             .map_err(Into::into)
     }
 
     fn stash_pop(&mut self) -> AnyResult<()> {
-        self.repo.stash_pop(0, None).map_err(Into::into)
+        self.repo
+            .stash_pop(0, None)
+            .context("Failed to pop the stashed state")
     }
 
     fn checkout_to(&mut self, id: &str) -> AnyResult<()> {
-        let (obj, reference) = self.repo.revparse_ext(id)?;
+        let (obj, reference) = self
+            .repo
+            .revparse_ext(id)
+            .with_context(|| format!("Failed to get object corresponding to {}", id))?;
 
-        self.repo.checkout_tree(&obj, None)?;
+        self.repo
+            .checkout_tree(&obj, None)
+            .with_context(|| format!("Failed to change the tree to {}", id))?;
 
         match reference {
             Some(gref) => self
                 .repo
-                .set_head(gref.name().expect("Branch name must be UTF-8"))?,
+                .set_head(gref.name().expect("Branch name must be UTF-8"))
+                .with_context(|| format!("Failed to set head to {}", gref.name().unwrap()))?,
+
             None => self.repo.set_head_detached(obj.id())?,
         }
 
@@ -119,7 +140,9 @@ impl CrateRepo {
         let mut options = StatusOptions::new();
         let options = options.include_untracked(true);
 
-        let statuses = repo.statuses(Some(options))?;
+        let statuses = repo
+            .statuses(Some(options))
+            .context("Failed to get current repository status")?;
 
         Ok(!statuses.is_empty())
     }
