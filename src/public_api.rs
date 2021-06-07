@@ -194,6 +194,12 @@ impl Parse for FnKey {
         let mut path = Path::parse(input)?;
         let name = path.segments.pop().unwrap().value().ident.clone();
 
+        let last_segment = path.segments.pop();
+
+        if let Some(last_segment) = last_segment {
+            path.segments.push(last_segment.value().clone());
+        }
+
         Ok(FnKey { path, name })
     }
 }
