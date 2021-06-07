@@ -1,4 +1,8 @@
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter, Result as FmtResult},
+    hash::Hash,
+};
 
 use semver::{BuildMetadata, Prerelease, Version};
 use syn::{Generics, Signature};
@@ -37,53 +41,29 @@ impl ApiComparator {
     }
 
     fn function_removals(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
-        self.previous
-            .functions()
-            .iter()
-            .filter(move |(k, _)| self.current.get_fn(k).is_none())
+        map_difference(self.previous.functions(), self.current.functions())
     }
 
     fn function_modifications(&self) -> impl Iterator<Item = (&FnKey, &Signature, &Signature)> {
-        self.previous
-            .functions()
-            .iter()
-            .filter_map(move |(k, prev_sig)| Some((k, prev_sig)).zip(self.current.get_fn(k)))
-            .map(|((k, previous_sig), curr_sig)| (k, previous_sig, curr_sig))
-            .filter(move |(_, prev_sig, curr_sig)| prev_sig != curr_sig)
+        map_modifications(self.previous.functions(), self.current.functions())
     }
 
     fn function_additions(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
-        self.current
-            .functions()
-            .iter()
-            .filter(move |(k, _)| self.previous.get_fn(k).is_none())
+        map_difference(self.current.functions(), self.previous.functions())
     }
 
     fn structure_removals(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
-        self.previous
-            .structures()
-            .iter()
-            .filter(move |(k, _)| self.current.get_structure(k).is_none())
+        map_difference(self.previous.structures(), self.current.structures())
     }
 
     fn structure_modifications(
         &self,
     ) -> impl Iterator<Item = (&StructureKey, &Generics, &Generics)> {
-        self.previous
-            .structures()
-            .iter()
-            .filter_map(move |(k, prev_struct)| {
-                Some((k, prev_struct)).zip(self.current.get_structure(k))
-            })
-            .map(|((k, prev_struct), curr_struct)| (k, prev_struct, curr_struct))
-            .filter(move |(_, prev_struct, curr_struct)| prev_struct != curr_struct)
+        map_modifications(self.previous.structures(), self.current.structures())
     }
 
     fn structure_additions(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
-        self.current
-            .structures()
-            .iter()
-            .filter(move |(k, _)| self.previous.get_structure(k).is_none())
+        map_difference(self.current.structures(), self.previous.structures())
     }
 }
 
@@ -191,6 +171,29 @@ impl ApiCompatibilityDiagnostics<'_> {
     fn next_patch(v: &mut Version) {
         v.patch += 1;
     }
+}
+
+fn map_difference<'a, K, V>(
+    a: &'a HashMap<K, V>,
+    b: &'a HashMap<K, V>,
+) -> impl Iterator<Item = (&'a K, &'a V)>
+where
+    K: Eq + Hash,
+{
+    a.iter().filter(move |(k, _)| b.get(k).is_none())
+}
+
+fn map_modifications<'a, K, V>(
+    a: &'a HashMap<K, V>,
+    b: &'a HashMap<K, V>,
+) -> impl Iterator<Item = (&'a K, &'a V, &'a V)>
+where
+    K: Eq + Hash,
+    V: PartialEq,
+{
+    a.iter()
+        .filter_map(move |(k, v1)| b.get(k).map(|v2| (k, v1, v2)))
+        .filter(|(_, v1, v2)| v1 != v2)
 }
 
 #[cfg(test)]
@@ -448,6 +451,49 @@ mod tests {
 
             let next_version = comp.guess_next_version(version_with_build());
             assert_eq!(next_version, Version::parse("3.2.4").unwrap())
+        }
+    }
+
+    mod map_functions {
+        use super::*;
+
+        fn bare_hashmap_1() -> HashMap<usize, usize> {
+            let mut tmp = HashMap::new();
+            tmp.insert(1, 42);
+            tmp.insert(2, 101);
+            tmp.insert(3, 13);
+            tmp
+        }
+
+        fn bare_hashmap_2() -> HashMap<usize, usize> {
+            let mut tmp = HashMap::new();
+            tmp.insert(1, 13);
+            tmp.insert(2, 101);
+            tmp.insert(4, 123);
+
+            tmp
+        }
+
+        #[test]
+        fn difference() {
+            let a = bare_hashmap_1();
+            let b = bare_hashmap_2();
+
+            let mut diff = map_difference(&a, &b).collect::<Vec<_>>();
+            diff.sort_by_key(|(k, _)| *k);
+
+            assert_eq!(diff, [(&3, &13)]);
+        }
+
+        #[test]
+        fn modification() {
+            let a = bare_hashmap_1();
+            let b = bare_hashmap_2();
+
+            let mut modif = map_modifications(&a, &b).collect::<Vec<_>>();
+            modif.sort_by_key(|(k, _, _)| *k);
+
+            assert_eq!(modif, [(&1, &42, &13)]);
         }
     }
 }

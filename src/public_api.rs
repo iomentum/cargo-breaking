@@ -35,16 +35,8 @@ impl PublicApi {
         &self.functions
     }
 
-    pub(crate) fn get_fn(&self, key: &FnKey) -> Option<&Signature> {
-        self.functions.get(key)
-    }
-
     pub(crate) fn structures(&self) -> &HashMap<StructureKey, Generics> {
         &self.structures
-    }
-
-    pub(crate) fn get_structure(&self, key: &StructureKey) -> Option<&Generics> {
-        self.structures.get(key)
     }
 }
 
