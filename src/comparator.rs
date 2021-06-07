@@ -105,7 +105,7 @@ impl Display for ApiCompatibilityDiagnostics<'_> {
 
         self.structure_removals
             .iter()
-            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
+            .try_for_each(|(key, _)| writeln!(f, "- {}", key))?;
 
         self.function_modifications
             .iter()
@@ -312,6 +312,41 @@ mod tests {
         };
     }
 
+    mod api_comparator {
+        use super::*;
+
+        const EMPTY_FILE: &str = "";
+        const FUNCTION_1: &str = "mod foo { mod bar { fn baz(n: usize) {} } }";
+        const FUNCTION_2: &str = "mod foo { mod bar { fn baz(n: u32) -> u32 {} } }";
+
+        #[test]
+        fn function_removal() {
+            let comparator = ApiComparator::from_strs(FUNCTION_1, EMPTY_FILE);
+            let left = comparator.run();
+            compatibility_diag!(right: function_removal);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn function_addition() {
+            let comparator = ApiComparator::from_strs(EMPTY_FILE, FUNCTION_1);
+            let left = comparator.run();
+            compatibility_diag!(right: function_addition);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn function_modification() {
+            let comparator = ApiComparator::from_strs(FUNCTION_1, FUNCTION_2);
+            let left = comparator.run();
+            compatibility_diag!(right: function_modification);
+
+            assert_eq!(left, right);
+        }
+    }
+
     mod api_compatibility_diagnostic {
         use super::*;
 
@@ -338,6 +373,15 @@ mod tests {
                 compatibility_diag!(comp: structure_removal);
                 assert!(!comp.contains_additions());
             }
+
+            #[test]
+            fn display() {
+                compatibility_diag!(comp: function_removal);
+                assert_eq!(comp.to_string(), "- foo::bar::baz\n");
+
+                compatibility_diag!(comp: structure_removal);
+                assert_eq!(comp.to_string(), "- foo::bar::Baz\n");
+            }
         }
 
         mod modification {
@@ -362,6 +406,15 @@ mod tests {
 
                 compatibility_diag!(comp: structure_modification);
                 assert!(!comp.contains_additions());
+            }
+
+            #[test]
+            fn display() {
+                compatibility_diag!(comp: function_modification);
+                assert_eq!(comp.to_string(), "≠ foo::bar::baz\n");
+
+                compatibility_diag!(comp: structure_modification);
+                assert_eq!(comp.to_string(), "≠ foo::bar::Baz\n");
             }
         }
 
@@ -388,6 +441,15 @@ mod tests {
             fn structure_is_addition() {
                 compatibility_diag!(comp: structure_addition);
                 assert!(comp.contains_additions());
+            }
+
+            #[test]
+            fn display() {
+                compatibility_diag!(comp: function_addition);
+                assert_eq!(comp.to_string(), "+ foo::bar::baz\n");
+
+                compatibility_diag!(comp: structure_addition);
+                assert_eq!(comp.to_string(), "+ foo::bar::Baz\n");
             }
         }
 
