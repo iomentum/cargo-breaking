@@ -8,13 +8,13 @@ use std::{
 use syn::{
     punctuated::Punctuated,
     visit::{visit_item_mod, Visit},
-    Expr, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature,
+    Expr, Fields, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PublicApi {
     functions: HashMap<FnKey, Signature>,
-    structures: HashMap<StructureKey, Generics>,
+    structures: HashMap<StructureKey, StructureValue>,
 }
 
 impl PublicApi {
@@ -37,7 +37,7 @@ impl PublicApi {
         &self.functions
     }
 
-    pub(crate) fn structures(&self) -> &HashMap<StructureKey, Generics> {
+    pub(crate) fn structures(&self) -> &HashMap<StructureKey, StructureValue> {
         &self.structures
     }
 }
@@ -59,7 +59,7 @@ use crate::ast::CrateAst;
 
 struct AstVisitor {
     functions: HashMap<FnKey, Signature>,
-    structures: HashMap<StructureKey, Generics>,
+    structures: HashMap<StructureKey, StructureValue>,
     path: Path,
 }
 
@@ -210,29 +210,34 @@ pub(crate) struct PublicStructure {
     path: Path,
     name: Ident,
     generics: Generics,
+    fields: Fields,
 }
 
 impl PublicStructure {
     // TODO: handle visitility
     fn from(s_struct: ItemStruct, path: Path) -> PublicStructure {
         let name = s_struct.ident;
-        let generics = s_struct.generics;
+        let ItemStruct {
+            generics, fields, ..
+        } = s_struct;
 
         PublicStructure {
             path,
             name,
             generics,
+            fields,
         }
     }
 
-    fn into_key_val(self) -> (StructureKey, Generics) {
+    fn into_key_val(self) -> (StructureKey, StructureValue) {
         let PublicStructure {
             path,
             name,
             generics,
+            fields,
         } = self;
         let k = StructureKey { path, name };
-        let v = generics;
+        let v = StructureValue { generics, fields };
 
         (k, v)
     }
@@ -308,6 +313,24 @@ impl Parse for StructureKey {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StructureValue {
+    generics: Generics,
+    fields: Fields,
+}
+
+#[cfg(test)]
+impl Parse for StructureValue {
+    fn parse(input: ParseStream) -> ParseResult<StructureValue> {
+        let input = input.parse()?;
+        let ItemStruct {
+            generics, fields, ..
+        } = input;
+
+        Ok(StructureValue { generics, fields })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -362,7 +385,7 @@ mod tests {
         #[test]
         fn adds_structure() {
             let ast = CrateAst::from_str("struct A;").unwrap();
-            let generics = parse_str("").unwrap();
+            let struct_data = parse_str("struct A;").unwrap();
 
             let public_api = PublicApi::from_ast(&ast);
 
@@ -370,7 +393,7 @@ mod tests {
 
             let k = parse_str("A").unwrap();
             let left = public_api.structures.get(&k);
-            let right = Some(&generics);
+            let right = Some(&struct_data);
 
             assert_eq!(left, right);
         }
@@ -459,6 +482,8 @@ mod tests {
     mod public_struct {
         use super::*;
 
+        use syn::FieldsNamed;
+
         #[test]
         fn from_struct() {
             let left = PublicStructure::from(sample_struct(), sample_path());
@@ -466,6 +491,7 @@ mod tests {
                 name: parse_str("Foo").unwrap(),
                 path: sample_path(),
                 generics: parse_str("<T>").unwrap(),
+                fields: parse_str::<FieldsNamed>("{ f: b }").unwrap().into(),
             };
 
             assert_eq!(left, right);
@@ -482,7 +508,7 @@ mod tests {
                 path: sample_path(),
             };
 
-            let right_val = parse_str("<T>").unwrap();
+            let right_val = parse_str("struct Foo<T> { f: b }").unwrap();
 
             assert_eq!(left_key, right_key);
             assert_eq!(left_val, right_val);

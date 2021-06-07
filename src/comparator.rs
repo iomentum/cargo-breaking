@@ -5,9 +5,9 @@ use std::{
 };
 
 use semver::{BuildMetadata, Prerelease, Version};
-use syn::{Generics, Signature};
+use syn::Signature;
 
-use crate::public_api::{FnKey, PublicApi, StructureKey};
+use crate::public_api::{FnKey, PublicApi, StructureKey, StructureValue};
 
 pub(crate) struct ApiComparator {
     previous: PublicApi,
@@ -60,17 +60,17 @@ impl ApiComparator {
         map_difference(self.current.functions(), self.previous.functions())
     }
 
-    fn structure_removals(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
+    fn structure_removals(&self) -> impl Iterator<Item = (&StructureKey, &StructureValue)> {
         map_difference(self.previous.structures(), self.current.structures())
     }
 
     fn structure_modifications(
         &self,
-    ) -> impl Iterator<Item = (&StructureKey, &Generics, &Generics)> {
+    ) -> impl Iterator<Item = (&StructureKey, &StructureValue, &StructureValue)> {
         map_modifications(self.previous.structures(), self.current.structures())
     }
 
-    fn structure_additions(&self) -> impl Iterator<Item = (&StructureKey, &Generics)> {
+    fn structure_additions(&self) -> impl Iterator<Item = (&StructureKey, &StructureValue)> {
         map_difference(self.current.structures(), self.previous.structures())
     }
 }
@@ -88,13 +88,13 @@ impl ApiComparator {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ApiCompatibilityDiagnostics<'a> {
     function_removals: Vec<(&'a FnKey, &'a Signature)>,
-    structure_removals: Vec<(&'a StructureKey, &'a Generics)>,
+    structure_removals: Vec<(&'a StructureKey, &'a StructureValue)>,
 
     function_modifications: Vec<(&'a FnKey, &'a Signature, &'a Signature)>,
-    structure_modifications: Vec<(&'a StructureKey, &'a Generics, &'a Generics)>,
+    structure_modifications: Vec<(&'a StructureKey, &'a StructureValue, &'a StructureValue)>,
 
     function_additions: Vec<(&'a FnKey, &'a Signature)>,
-    structure_additions: Vec<(&'a StructureKey, &'a Generics)>,
+    structure_additions: Vec<(&'a StructureKey, &'a StructureValue)>,
 }
 
 impl Display for ApiCompatibilityDiagnostics<'_> {
@@ -236,12 +236,12 @@ mod tests {
         parse_str("fn baz(n: u32) -> u32").unwrap()
     }
 
-    fn generics_1() -> Generics {
-        parse_str("<>").unwrap()
+    fn structure_value_1() -> StructureValue {
+        parse_str("struct Baz<T>(T);").unwrap()
     }
 
-    fn generics_2() -> Generics {
-        parse_str("<T, E>").unwrap()
+    fn structure_value_2() -> StructureValue {
+        parse_str("struct Baz { f: G }").unwrap()
     }
 
     macro_rules! compatibility_diag {
@@ -262,7 +262,7 @@ mod tests {
         ($name:ident: structure_removal) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
             let tmp_1 = structure_key_1();
-            let tmp_2 = generics_1();
+            let tmp_2 = structure_value_1();
 
             $name.structure_removals.push((&tmp_1, &tmp_2));
 
@@ -283,8 +283,8 @@ mod tests {
         ($name:ident: structure_modification) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
             let tmp_1 = structure_key_1();
-            let tmp_2 = generics_1();
-            let tmp_3 = generics_2();
+            let tmp_2 = structure_value_1();
+            let tmp_3 = structure_value_2();
 
             $name.structure_modifications.push((&tmp_1, &tmp_2, &tmp_3));
 
@@ -304,7 +304,7 @@ mod tests {
         ($name:ident: structure_addition) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
             let tmp_1 = structure_key_1();
-            let tmp_2 = generics_1();
+            let tmp_2 = structure_value_1();
 
             $name.structure_additions.push((&tmp_1, &tmp_2));
 
