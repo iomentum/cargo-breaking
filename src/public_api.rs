@@ -1,6 +1,8 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
+    iter,
 };
 
 use syn::{
@@ -138,6 +140,20 @@ pub(crate) struct FnKey {
     path: Path,
 }
 
+impl FnKey {
+    fn idents(&self) -> impl Iterator<Item = &Ident> {
+        self.path
+            .segments
+            .iter()
+            .map(|seg| &seg.ident)
+            .chain(iter::once(&self.name))
+    }
+
+    fn len(&self) -> usize {
+        self.path.segments.len() + 1
+    }
+}
+
 impl Display for FnKey {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         self.path
@@ -146,6 +162,29 @@ impl Display for FnKey {
             .try_for_each(|segment| write!(f, "{}::", segment.ident))?;
 
         write!(f, "{}", self.name)
+    }
+}
+
+impl Ord for FnKey {
+    fn cmp(&self, other: &FnKey) -> Ordering {
+        let cmp_seg = |a: &Ident, b| a.cmp(b);
+
+        let segments = self.idents().zip(other.idents());
+
+        for (seg_a, seg_b) in segments {
+            let order = cmp_seg(seg_a, seg_b);
+            if order != Ordering::Equal {
+                return order;
+            }
+        }
+
+        self.len().cmp(&other.len())
+    }
+}
+
+impl PartialOrd for FnKey {
+    fn partial_cmp(&self, other: &FnKey) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -197,6 +236,43 @@ impl PublicStructure {
 pub(crate) struct StructureKey {
     path: Path,
     name: Ident,
+}
+
+impl StructureKey {
+    fn idents(&self) -> impl Iterator<Item = &Ident> {
+        self.path
+            .segments
+            .iter()
+            .map(|seg| &seg.ident)
+            .chain(iter::once(&self.name))
+    }
+
+    fn len(&self) -> usize {
+        self.path.segments.len() + 1
+    }
+}
+
+impl Ord for StructureKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let cmp_seg = |a: &Ident, b| a.cmp(b);
+
+        let segments = self.idents().zip(other.idents());
+
+        for (seg_a, seg_b) in segments {
+            let order = cmp_seg(seg_a, seg_b);
+            if order != Ordering::Equal {
+                return order;
+            }
+        }
+
+        self.len().cmp(&other.len())
+    }
+}
+
+impl PartialOrd for StructureKey {
+    fn partial_cmp(&self, other: &StructureKey) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Display for StructureKey {
@@ -352,6 +428,22 @@ mod tests {
 
             assert_eq!(k.to_string(), "foo::bar");
         }
+
+        #[test]
+        fn comparaison_same_length() {
+            let a: FnKey = parse_str("foo::bar").unwrap();
+            let b = parse_str("bar::baz").unwrap();
+
+            assert_eq!(a.cmp(&b), Ordering::Greater);
+        }
+
+        #[test]
+        fn comparaison_different_length() {
+            let a: FnKey = parse_str("foo::bar::baz").unwrap();
+            let b = parse_str("foo::bar::quux::zzx").unwrap();
+
+            assert_eq!(a.cmp(&b), Ordering::Less);
+        }
     }
 
     fn sample_struct() -> ItemStruct {
@@ -417,6 +509,22 @@ mod tests {
             };
 
             assert_eq!(left, right);
+        }
+
+        #[test]
+        fn comparaison_same_length() {
+            let a: StructureKey = parse_str("foo::bar").unwrap();
+            let b = parse_str("bar::baz").unwrap();
+
+            assert_eq!(a.cmp(&b), Ordering::Greater);
+        }
+
+        #[test]
+        fn comparaison_different_length() {
+            let a: StructureKey = parse_str("foo::bar::baz").unwrap();
+            let b = parse_str("foo::bar::quux::zzx").unwrap();
+
+            assert_eq!(a.cmp(&b), Ordering::Less);
         }
     }
 }

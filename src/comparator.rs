@@ -20,13 +20,21 @@ impl ApiComparator {
     }
 
     pub(crate) fn run(&self) -> ApiCompatibilityDiagnostics {
-        let function_removals = self.function_removals().collect();
-        let function_modifications = self.function_modifications().collect();
-        let function_additions = self.function_additions().collect();
+        let mut function_removals: Vec<_> = self.function_removals().collect();
+        let mut function_modifications: Vec<_> = self.function_modifications().collect();
+        let mut function_additions: Vec<_> = self.function_additions().collect();
 
-        let structure_removals = self.structure_removals().collect();
-        let structure_additions = self.structure_additions().collect();
-        let structure_modifications = self.structure_modifications().collect();
+        let mut structure_removals: Vec<_> = self.structure_removals().collect();
+        let mut structure_additions: Vec<_> = self.structure_additions().collect();
+        let mut structure_modifications: Vec<_> = self.structure_modifications().collect();
+
+        function_removals.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        function_modifications.sort_by(|(k1, _, _), (k2, _, _)| k1.cmp(k2));
+        function_additions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+
+        structure_removals.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        structure_additions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        structure_modifications.sort_by(|(k1, _, _), (k2, _, _)| k1.cmp(k2));
 
         ApiCompatibilityDiagnostics {
             function_removals,
