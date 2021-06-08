@@ -178,11 +178,8 @@ pub(crate) enum ItemKind {
 #[cfg(test)]
 impl Parse for ItemKind {
     fn parse(input: ParseStream) -> ParseResult<ItemKind> {
-        let try_fn = input.fork();
-        let try_struct = input;
-
-        let try_fn = try_fn.parse::<FnPrototype>();
-        let try_struct = try_struct.parse::<Struct>();
+        let try_fn = input.parse::<FnPrototype>();
+        let try_struct = input.parse::<Struct>();
 
         match (try_fn, try_struct) {
             (Ok(f), Err(_)) => Ok(f.into()),
