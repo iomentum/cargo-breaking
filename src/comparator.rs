@@ -5,9 +5,8 @@ use std::{
 };
 
 use semver::{BuildMetadata, Prerelease, Version};
-use syn::Signature;
 
-use crate::public_api::{FnKey, PublicApi, StructureKey, StructureValue};
+use crate::public_api::{ItemKind, ItemPath, PublicApi};
 
 pub struct ApiComparator {
     previous: PublicApi,
@@ -20,58 +19,31 @@ impl ApiComparator {
     }
 
     pub fn run(&self) -> ApiCompatibilityDiagnostics {
-        let mut function_removals: Vec<_> = self.function_removals().collect();
-        let mut function_modifications: Vec<_> = self.function_modifications().collect();
-        let mut function_additions: Vec<_> = self.function_additions().collect();
+        let mut removals: Vec<_> = self.item_removals().collect();
+        let mut modifications: Vec<_> = self.item_modifications().collect();
+        let mut additions: Vec<_> = self.item_additions().collect();
 
-        let mut structure_removals: Vec<_> = self.structure_removals().collect();
-        let mut structure_additions: Vec<_> = self.structure_additions().collect();
-        let mut structure_modifications: Vec<_> = self.structure_modifications().collect();
-
-        function_removals.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        function_modifications.sort_by(|(k1, _, _), (k2, _, _)| k1.cmp(k2));
-        function_additions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-
-        structure_removals.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        structure_additions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        structure_modifications.sort_by(|(k1, _, _), (k2, _, _)| k1.cmp(k2));
+        removals.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
+        modifications.sort_by(|(p1, _, _), (p2, _, _)| p1.cmp(p2));
+        additions.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
 
         ApiCompatibilityDiagnostics {
-            function_removals,
-            structure_removals,
-
-            function_modifications,
-            structure_modifications,
-
-            function_additions,
-            structure_additions,
+            removals,
+            modifications,
+            additions,
         }
     }
 
-    fn function_removals(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
-        map_difference(self.previous.functions(), self.current.functions())
+    fn item_removals(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind)> {
+        map_difference(self.previous.items(), self.current.items())
     }
 
-    fn function_modifications(&self) -> impl Iterator<Item = (&FnKey, &Signature, &Signature)> {
-        map_modifications(self.previous.functions(), self.current.functions())
+    fn item_modifications(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind, &ItemKind)> {
+        map_modifications(self.previous.items(), self.current.items())
     }
 
-    fn function_additions(&self) -> impl Iterator<Item = (&FnKey, &Signature)> {
-        map_difference(self.current.functions(), self.previous.functions())
-    }
-
-    fn structure_removals(&self) -> impl Iterator<Item = (&StructureKey, &StructureValue)> {
-        map_difference(self.previous.structures(), self.current.structures())
-    }
-
-    fn structure_modifications(
-        &self,
-    ) -> impl Iterator<Item = (&StructureKey, &StructureValue, &StructureValue)> {
-        map_modifications(self.previous.structures(), self.current.structures())
-    }
-
-    fn structure_additions(&self) -> impl Iterator<Item = (&StructureKey, &StructureValue)> {
-        map_difference(self.current.structures(), self.previous.structures())
+    fn item_additions(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind)> {
+        map_difference(self.current.items(), self.previous.items())
     }
 }
 
@@ -87,41 +59,24 @@ impl ApiComparator {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ApiCompatibilityDiagnostics<'a> {
-    function_removals: Vec<(&'a FnKey, &'a Signature)>,
-    structure_removals: Vec<(&'a StructureKey, &'a StructureValue)>,
-
-    function_modifications: Vec<(&'a FnKey, &'a Signature, &'a Signature)>,
-    structure_modifications: Vec<(&'a StructureKey, &'a StructureValue, &'a StructureValue)>,
-
-    function_additions: Vec<(&'a FnKey, &'a Signature)>,
-    structure_additions: Vec<(&'a StructureKey, &'a StructureValue)>,
+    removals: Vec<(&'a ItemPath, &'a ItemKind)>,
+    modifications: Vec<(&'a ItemPath, &'a ItemKind, &'a ItemKind)>,
+    additions: Vec<(&'a ItemPath, &'a ItemKind)>,
 }
 
 impl Display for ApiCompatibilityDiagnostics<'_> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        self.function_removals
+        self.removals
             .iter()
-            .try_for_each(|(key, _)| writeln!(f, "- {}", key))?;
+            .try_for_each(|(path, _)| writeln!(f, "- {}", path))?;
 
-        self.structure_removals
+        self.modifications
             .iter()
-            .try_for_each(|(key, _)| writeln!(f, "- {}", key))?;
+            .try_for_each(|(path, _, _)| writeln!(f, "≠ {}", path))?;
 
-        self.function_modifications
+        self.additions
             .iter()
-            .try_for_each(|(key, _, _)| writeln!(f, "≠ {}", key))?;
-
-        self.structure_modifications
-            .iter()
-            .try_for_each(|(key, _, _)| writeln!(f, "≠ {}", key))?;
-
-        self.function_additions
-            .iter()
-            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
-
-        self.structure_additions
-            .iter()
-            .try_for_each(|(key, _)| writeln!(f, "+ {}", key))?;
+            .try_for_each(|(path, _)| writeln!(f, "+ {}", path))?;
 
         Ok(())
     }
@@ -164,15 +119,11 @@ impl ApiCompatibilityDiagnostics<'_> {
     }
 
     fn contains_breaking_changes(&self) -> bool {
-        !self.function_removals.is_empty()
-            || !self.function_modifications.is_empty()
-            || !self.structure_modifications.is_empty()
-            || !self.structure_removals.is_empty()
-            || !self.structure_removals.is_empty()
+        !self.removals.is_empty() || !self.modifications.is_empty()
     }
 
     fn contains_additions(&self) -> bool {
-        !self.function_additions.is_empty() || !self.structure_additions.is_empty()
+        !self.additions.is_empty()
     }
 
     fn next_major(v: &mut Version) {
@@ -220,28 +171,16 @@ mod tests {
 
     use super::*;
 
-    fn function_key_1() -> FnKey {
+    fn item_path_1() -> ItemPath {
         parse_str("foo::bar::baz").unwrap()
     }
 
-    fn structure_key_1() -> StructureKey {
-        parse_str("foo::bar::Baz").unwrap()
-    }
-
-    fn function_signature_1() -> Signature {
+    fn item_kind_1() -> ItemKind {
         parse_str("fn baz(n: usize)").unwrap()
     }
 
-    fn function_signature_2() -> Signature {
+    fn item_kind_2() -> ItemKind {
         parse_str("fn baz(n: u32) -> u32").unwrap()
-    }
-
-    fn structure_value_1() -> StructureValue {
-        parse_str("struct Baz<T>(T);").unwrap()
-    }
-
-    fn structure_value_2() -> StructureValue {
-        parse_str("struct Baz { f: G }").unwrap()
     }
 
     macro_rules! compatibility_diag {
@@ -249,64 +188,36 @@ mod tests {
             let $name = ApiCompatibilityDiagnostics::default();
         };
 
-        ($name:ident: function_removal) => {
+        ($name:ident: removal) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = function_key_1();
-            let tmp_2 = function_signature_1();
 
-            $name.function_removals.push((&tmp_1, &tmp_2));
+            let tmp_1 = item_path_1();
+            let tmp_2 = item_kind_1();
+
+            $name.removals.push((&tmp_1, &tmp_2));
 
             let $name = $name;
         };
 
-        ($name:ident: structure_removal) => {
+        ($name:ident: modification) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = structure_key_1();
-            let tmp_2 = structure_value_1();
 
-            $name.structure_removals.push((&tmp_1, &tmp_2));
+            let tmp_1 = item_path_1();
+            let tmp_2 = item_kind_1();
+            let tmp_3 = item_kind_2();
+
+            $name.modifications.push((&tmp_1, &tmp_2, &tmp_3));
 
             let $name = $name;
         };
 
-        ($name:ident: function_modification) => {
+        ($name:ident: addition) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = function_key_1();
-            let tmp_2 = function_signature_1();
-            let tmp_3 = function_signature_2();
 
-            $name.function_modifications.push((&tmp_1, &tmp_2, &tmp_3));
+            let tmp_1 = item_path_1();
+            let tmp_2 = item_kind_1();
 
-            let $name = $name;
-        };
-
-        ($name:ident: structure_modification) => {
-            let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = structure_key_1();
-            let tmp_2 = structure_value_1();
-            let tmp_3 = structure_value_2();
-
-            $name.structure_modifications.push((&tmp_1, &tmp_2, &tmp_3));
-
-            let $name = $name;
-        };
-
-        ($name:ident: function_addition) => {
-            let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = function_key_1();
-            let tmp_2 = function_signature_1();
-
-            $name.function_additions.push((&tmp_1, &tmp_2));
-
-            let $name = $name;
-        };
-
-        ($name:ident: structure_addition) => {
-            let mut $name = ApiCompatibilityDiagnostics::default();
-            let tmp_1 = structure_key_1();
-            let tmp_2 = structure_value_1();
-
-            $name.structure_additions.push((&tmp_1, &tmp_2));
+            $name.additions.push((&tmp_1, &tmp_2));
 
             let $name = $name;
         };
@@ -320,28 +231,19 @@ mod tests {
         const FUNCTION_2: &str = "mod foo { mod bar { fn baz(n: u32) -> u32 {} } }";
 
         #[test]
-        fn function_removal() {
+        fn removal() {
             let comparator = ApiComparator::from_strs(FUNCTION_1, EMPTY_FILE);
             let left = comparator.run();
-            compatibility_diag!(right: function_removal);
+            compatibility_diag!(right: removal);
 
             assert_eq!(left, right);
         }
 
         #[test]
-        fn function_addition() {
-            let comparator = ApiComparator::from_strs(EMPTY_FILE, FUNCTION_1);
-            let left = comparator.run();
-            compatibility_diag!(right: function_addition);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn function_modification() {
+        fn modification() {
             let comparator = ApiComparator::from_strs(FUNCTION_1, FUNCTION_2);
             let left = comparator.run();
-            compatibility_diag!(right: function_modification);
+            compatibility_diag!(right: modification);
 
             assert_eq!(left, right);
         }
@@ -354,33 +256,21 @@ mod tests {
             use super::*;
 
             #[test]
-            fn function_is_breaking() {
-                compatibility_diag!(comp: function_removal);
-                assert!(comp.contains_breaking_changes());
-            }
-
-            #[test]
-            fn structure_is_breaking() {
-                compatibility_diag!(comp: structure_removal);
+            fn is_breaking() {
+                compatibility_diag!(comp: removal);
                 assert!(comp.contains_breaking_changes());
             }
 
             #[test]
             fn is_not_addition() {
-                compatibility_diag!(comp: function_removal);
-                assert!(!comp.contains_additions());
-
-                compatibility_diag!(comp: structure_removal);
+                compatibility_diag!(comp: removal);
                 assert!(!comp.contains_additions());
             }
 
             #[test]
             fn display() {
-                compatibility_diag!(comp: function_removal);
+                compatibility_diag!(comp: removal);
                 assert_eq!(comp.to_string(), "- foo::bar::baz\n");
-
-                compatibility_diag!(comp: structure_removal);
-                assert_eq!(comp.to_string(), "- foo::bar::Baz\n");
             }
         }
 
@@ -388,33 +278,21 @@ mod tests {
             use super::*;
 
             #[test]
-            fn function_is_breaking() {
-                compatibility_diag!(comp: function_modification);
-                assert!(comp.contains_breaking_changes());
-            }
-
-            #[test]
-            fn structure_is_breaking() {
-                compatibility_diag!(comp: structure_modification);
+            fn is_breaking() {
+                compatibility_diag!(comp: modification);
                 assert!(comp.contains_breaking_changes());
             }
 
             #[test]
             fn is_not_addition() {
-                compatibility_diag!(comp: function_modification);
-                assert!(!comp.contains_additions());
-
-                compatibility_diag!(comp: structure_modification);
+                compatibility_diag!(comp: modification);
                 assert!(!comp.contains_additions());
             }
 
             #[test]
             fn display() {
-                compatibility_diag!(comp: function_modification);
+                compatibility_diag!(comp: modification);
                 assert_eq!(comp.to_string(), "≠ foo::bar::baz\n");
-
-                compatibility_diag!(comp: structure_modification);
-                assert_eq!(comp.to_string(), "≠ foo::bar::Baz\n");
             }
         }
 
@@ -423,33 +301,21 @@ mod tests {
 
             #[test]
             fn is_not_breaking() {
-                compatibility_diag!(comp: function_addition);
-                assert!(!comp.contains_breaking_changes());
-
-                compatibility_diag!(comp: structure_addition);
+                compatibility_diag!(comp: addition);
                 assert!(!comp.contains_breaking_changes());
             }
 
             // TODO: rename addition -> non-breaking
             #[test]
-            fn function_is_addition() {
-                compatibility_diag!(comp: function_addition);
-                assert!(comp.contains_additions());
-            }
-
-            #[test]
-            fn structure_is_addition() {
-                compatibility_diag!(comp: structure_addition);
+            fn is_addition() {
+                compatibility_diag!(comp: addition);
                 assert!(comp.contains_additions());
             }
 
             #[test]
             fn display() {
-                compatibility_diag!(comp: function_addition);
+                compatibility_diag!(comp: addition);
                 assert_eq!(comp.to_string(), "+ foo::bar::baz\n");
-
-                compatibility_diag!(comp: structure_addition);
-                assert_eq!(comp.to_string(), "+ foo::bar::Baz\n");
             }
         }
 
@@ -486,12 +352,10 @@ mod tests {
 
             #[test]
             fn breaking_changes_effects() {
-                compatibility_diag!(comp_1: function_removal);
-                compatibility_diag!(comp_2: structure_removal);
-                compatibility_diag!(comp_3: function_modification);
-                compatibility_diag!(comp_4: structure_modification);
+                compatibility_diag!(comp_1: removal);
+                compatibility_diag!(comp_2: modification);
 
-                let comps = [comp_1, comp_2, comp_3, comp_4];
+                let comps = [comp_1, comp_2];
 
                 for comp in &comps {
                     let next_version = comp.guess_next_version(sample_version());
@@ -501,15 +365,10 @@ mod tests {
 
             #[test]
             fn additions_effects() {
-                compatibility_diag!(comp_1: function_addition);
-                compatibility_diag!(comp_2: structure_addition);
+                compatibility_diag!(comp: addition);
 
-                let comps = [comp_1, comp_2];
-
-                for comp in &comps {
-                    let next_version = comp.guess_next_version(sample_version());
-                    assert_eq!(next_version, Version::parse("3.3.0").unwrap());
-                }
+                let next_version = comp.guess_next_version(sample_version());
+                assert_eq!(next_version, Version::parse("3.3.0").unwrap());
             }
 
             #[test]
