@@ -14,6 +14,7 @@ pub(crate) fn extract_api() -> AnyResult<PublicApi> {
     let output = Command::new("cargo")
         .arg("+nightly")
         .arg("rustc")
+        .arg("--lib")
         .arg("--")
         .args(&["-Z", "unpretty=expanded"])
         .args(&["-Z", "unpretty=everybody_loops"])
