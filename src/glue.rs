@@ -8,7 +8,7 @@ use std::{
 use anyhow::{bail, Context, Result as AnyResult};
 use syn::Error as SynError;
 
-use crate::{ast::CrateAst, public_api::PublicApi};
+use crate::{ast::CrateAst, comparator::ApiComparator, public_api::PublicApi};
 
 pub(crate) fn extract_api() -> AnyResult<PublicApi> {
     let output = Command::new("cargo")
@@ -62,3 +62,13 @@ impl Display for InvalidRustcAst {
 }
 
 impl Error for InvalidRustcAst {}
+
+pub fn compare(prev: &str, curr: &str) -> AnyResult<ApiComparator> {
+    let prev_ast = CrateAst::from_str(prev).context("Failed to parse code for previous version")?;
+    let curr_ast = CrateAst::from_str(curr).context("Failed to parse code for current version")?;
+
+    let prev_api = PublicApi::from_ast(&prev_ast);
+    let curr_api = PublicApi::from_ast(&curr_ast);
+
+    Ok(ApiComparator::new(prev_api, curr_api))
+}

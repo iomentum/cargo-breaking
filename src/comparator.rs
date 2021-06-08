@@ -9,7 +9,7 @@ use syn::Signature;
 
 use crate::public_api::{FnKey, PublicApi, StructureKey, StructureValue};
 
-pub(crate) struct ApiComparator {
+pub struct ApiComparator {
     previous: PublicApi,
     current: PublicApi,
 }
@@ -19,7 +19,7 @@ impl ApiComparator {
         ApiComparator { previous, current }
     }
 
-    pub(crate) fn run(&self) -> ApiCompatibilityDiagnostics {
+    pub fn run(&self) -> ApiCompatibilityDiagnostics {
         let mut function_removals: Vec<_> = self.function_removals().collect();
         let mut function_modifications: Vec<_> = self.function_modifications().collect();
         let mut function_additions: Vec<_> = self.function_additions().collect();
@@ -86,7 +86,7 @@ impl ApiComparator {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ApiCompatibilityDiagnostics<'a> {
+pub struct ApiCompatibilityDiagnostics<'a> {
     function_removals: Vec<(&'a FnKey, &'a Signature)>,
     structure_removals: Vec<(&'a StructureKey, &'a StructureValue)>,
 
