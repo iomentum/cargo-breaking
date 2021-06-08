@@ -1,8 +1,16 @@
 use cargo_breaking;
 
 #[test]
-fn addition() {
+fn private_is_not_reported() {
     let comparator = cargo_breaking::compare("", "struct A;").unwrap();
+    let diff = comparator.run();
+
+    assert!(diff.to_string().is_empty());
+}
+
+#[test]
+fn addition() {
+    let comparator = cargo_breaking::compare("", "pub struct A;").unwrap();
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "+ A\n");
@@ -10,7 +18,7 @@ fn addition() {
 
 #[test]
 fn removal() {
-    let comparator = cargo_breaking::compare("struct B;", "").unwrap();
+    let comparator = cargo_breaking::compare("pub struct B;", "").unwrap();
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "- B\n");
@@ -18,7 +26,7 @@ fn removal() {
 
 #[test]
 fn new_field_tupled() {
-    let comparator = cargo_breaking::compare("struct C();", "struct C(usize);").unwrap();
+    let comparator = cargo_breaking::compare("pub struct C();", "pub struct C(usize);").unwrap();
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "≠ C\n");
@@ -27,7 +35,7 @@ fn new_field_tupled() {
 #[test]
 fn new_field_named() {
     let comparator =
-        cargo_breaking::compare("struct D { a: b }", "struct D { a: b, c: d }").unwrap();
+        cargo_breaking::compare("pub struct D { a: b }", "pub struct D { a: b, c: d }").unwrap();
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "≠ D\n")
@@ -35,7 +43,7 @@ fn new_field_named() {
 
 #[test]
 fn generic_change() {
-    let comparator = cargo_breaking::compare("struct E;", "struct E<T>;").unwrap();
+    let comparator = cargo_breaking::compare("pub struct E;", "pub struct E<T>;").unwrap();
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "≠ E\n");

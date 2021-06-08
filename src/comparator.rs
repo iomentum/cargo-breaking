@@ -176,11 +176,11 @@ mod tests {
     }
 
     fn item_kind_1() -> ItemKind {
-        parse_str("fn baz(n: usize)").unwrap()
+        parse_str("pub fn baz(n: usize)").unwrap()
     }
 
     fn item_kind_2() -> ItemKind {
-        parse_str("fn baz(n: u32) -> u32").unwrap()
+        parse_str("pub fn baz(n: u32) -> u32").unwrap()
     }
 
     macro_rules! compatibility_diag {
@@ -227,8 +227,8 @@ mod tests {
         use super::*;
 
         const EMPTY_FILE: &str = "";
-        const FUNCTION_1: &str = "mod foo { mod bar { fn baz(n: usize) {} } }";
-        const FUNCTION_2: &str = "mod foo { mod bar { fn baz(n: u32) -> u32 {} } }";
+        const FUNCTION_1: &str = "mod foo { mod bar { pub fn baz(n: usize) {} } }";
+        const FUNCTION_2: &str = "mod foo { mod bar { pub fn baz(n: u32) -> u32 {} } }";
 
         #[test]
         fn removal() {

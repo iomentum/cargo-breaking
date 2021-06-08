@@ -9,6 +9,7 @@ use syn::{
     punctuated::Punctuated,
     visit::{visit_item_mod, Visit},
     Expr, Fields, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature,
+    Visibility,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,7 +42,7 @@ impl PublicApi {
 }
 
 #[cfg(test)]
-use syn::parse::{Parse, ParseStream, Result as ParseResult};
+use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult};
 
 use crate::ast::CrateAst;
 
@@ -66,6 +67,10 @@ impl AstVisitor {
 
 impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_item_fn(&mut self, i: &'ast ItemFn) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
         let k = ItemPath::new(self.path.clone(), i.sig.ident.clone());
         let v = FnPrototype::new(i.sig.clone()).into();
 
@@ -74,6 +79,10 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_item_struct(&mut self, i: &'ast ItemStruct) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
         let k = ItemPath::new(self.path.clone(), i.ident.clone());
         let v = Struct::new(i.generics.clone(), i.fields.clone()).into();
 
@@ -222,6 +231,16 @@ impl FnPrototype {
 #[cfg(test)]
 impl Parse for FnPrototype {
     fn parse(input: ParseStream) -> ParseResult<FnPrototype> {
+        let vis = input.parse()?;
+
+        if !matches!(vis, Visibility::Public(_)) {
+            let err_span = input.span();
+            return Err(ParseError::new(
+                err_span,
+                "Found non-public function in test code",
+            ));
+        }
+
         let sig = input.parse()?;
         Ok(FnPrototype { sig })
     }
@@ -273,12 +292,12 @@ mod tests {
 
         #[test]
         fn adds_functions() {
-            let ast = CrateAst::from_str("fn fact(n: u32) -> u32 {}").unwrap();
+            let ast = CrateAst::from_str("pub fn fact(n: u32) -> u32 {}").unwrap();
             let public_api = PublicApi::from_ast(&ast);
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item_kind = parse_str::<ItemKind>("fn fact(n: u32) -> u32").unwrap();
+            let item_kind = parse_str::<ItemKind>("pub fn fact(n: u32) -> u32").unwrap();
 
             let k = parse_str("fact").unwrap();
             let left = public_api.items.get(&k);
@@ -289,12 +308,12 @@ mod tests {
 
         #[test]
         fn adds_structure() {
-            let ast = CrateAst::from_str("struct A;").unwrap();
+            let ast = CrateAst::from_str("pub struct A;").unwrap();
             let public_api = PublicApi::from_ast(&ast);
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("struct A;").unwrap();
+            let item = parse_str::<ItemKind>("pub struct A;").unwrap();
 
             let k = parse_str("A").unwrap();
             let left = public_api.items.get(&k);
@@ -306,7 +325,7 @@ mod tests {
         #[test]
         #[should_panic(expected = "An item is defined twice")]
         fn panics_on_redefinition_1() {
-            let ast = parse_file("fn a () {} fn a() {}").unwrap();
+            let ast = parse_file("pub fn a () {} pub fn a() {}").unwrap();
             let mut visitor = AstVisitor::new();
             visitor.visit_file(&ast);
         }
@@ -314,7 +333,7 @@ mod tests {
         #[test]
         #[should_panic(expected = "An item is defined twice")]
         fn panics_on_redefinition_2() {
-            let ast = parse_file("struct A; struct A;").unwrap();
+            let ast = parse_file("pub struct A; pub struct A;").unwrap();
             let mut visitor = AstVisitor::new();
             visitor.visit_file(&ast);
         }
