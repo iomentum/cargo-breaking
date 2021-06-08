@@ -49,10 +49,15 @@ It searches for functions and reports any change, public or not, compares both
 prototypes, and if any difference is found, decides that there is a modification
 of the function.
 
+Similarly, `cargo-breaking` compares structures for both versions. If a field
+or a generic argument has changed, no matter its visibility, then a
+breaking change is triggered.
+
 As this comparaison method is very simple, it reports a lot of false positives:
 
 - renaming an argument is reported as a breaking change,
-- renaming a generic type is reported as a breaking change.
+- renaming a generic type is reported as a breaking change,
+- adding a generic type with a default value is a breaking change.
 
 [semver]: https://semver.org/
 [add-field-pg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=492a1727404d1f8d199962c639454f44
