@@ -50,32 +50,23 @@ use crate::ast::CrateAst;
 
 struct AstVisitor {
     items: HashMap<ItemPath, ItemKind>,
-    path: Path,
+    path: Vec<Ident>,
 }
 
 impl AstVisitor {
     fn new() -> AstVisitor {
-        let path = Path {
-            leading_colon: None,
-            segments: Punctuated::new(),
-        };
-
         AstVisitor {
             items: HashMap::new(),
-            path,
+            path: Vec::new(),
         }
     }
 
     fn add_path_segment(&mut self, i: Ident) {
-        let last_segment = PathSegment {
-            ident: i,
-            arguments: syn::PathArguments::None,
-        };
-        self.path.segments.push(last_segment);
+        self.path.push(i);
     }
 
     fn remove_path_segment(&mut self) {
-        self.path.segments.pop().unwrap();
+        self.path.pop().unwrap();
     }
 }
 
@@ -104,7 +95,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
         assert!(tmp.is_none(), "An item is defined twice");
 
         self.add_path_segment(i.ident.clone());
-        let mut fields_visitor = FieldsVisitor::new(&self.path, 0, &mut self.items);
+        let mut fields_visitor = FieldsVisitor::new(self.path.as_slice(), 0, &mut self.items);
         fields_visitor.visit_fields(&i.fields);
         self.remove_path_segment();
     }
@@ -119,14 +110,14 @@ impl<'ast> Visit<'ast> for AstVisitor {
 }
 
 struct FieldsVisitor<'a> {
-    item_path: &'a Path,
+    item_path: &'a [Ident],
     field_id: usize,
     items: &'a mut HashMap<ItemPath, ItemKind>,
 }
 
 impl<'a> FieldsVisitor<'a> {
     fn new(
-        item_path: &'a Path,
+        item_path: &'a [Ident],
         field_id: usize,
         items: &'a mut HashMap<ItemPath, ItemKind>,
     ) -> Self {
@@ -138,7 +129,7 @@ impl<'a> FieldsVisitor<'a> {
     }
 
     fn add_field(&mut self, name: Option<&Ident>, ty: Type) {
-        let item_path = self.item_path.clone();
+        let item_path = self.item_path.to_owned();
 
         let key = match name {
             Some(name) => ItemPath::new_named(item_path, name.clone()),
@@ -170,36 +161,35 @@ impl<'ast> Visit<'ast> for FieldsVisitor<'_> {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ItemPath {
     // TODO: use a Vec<Ident> to strore path instead
-    path: Path,
+    path: Vec<Ident>,
     last: LastItemPathSegment,
 }
 
 impl ItemPath {
-    fn new_named(path: Path, name: Ident) -> ItemPath {
+    fn new_named(path: Vec<Ident>, name: Ident) -> ItemPath {
         let last = LastItemPathSegment::Named(name);
-        ItemPath { path, last }
+        ItemPath { last, path }
     }
 
-    fn new_unnamed(path: Path, id: usize) -> ItemPath {
+    fn new_unnamed(path: Vec<Ident>, id: usize) -> ItemPath {
         let last = LastItemPathSegment::Id(id);
-        ItemPath { path, last }
+        ItemPath { last, path }
     }
 
     fn path_idents(&self) -> impl Iterator<Item = &Ident> {
-        self.path.segments.iter().map(|seg| &seg.ident)
+        self.path.iter()
     }
 
     fn len(&self) -> usize {
-        self.path.segments.len() + 1
+        self.path.len() + 1
     }
 }
 
 impl Display for ItemPath {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         self.path
-            .segments
             .iter()
-            .try_for_each(|segment| write!(f, "{}::", segment.ident))?;
+            .try_for_each(|segment| write!(f, "{}::", segment))?;
 
         write!(f, "{}", self.last)
     }
@@ -224,13 +214,12 @@ impl Ord for ItemPath {
 
         // TODO: figure out a better way to handle last-segment comparaison
         match self.len().cmp(&other.len()) {
-            Ordering::Less => self.last.cmp(&LastItemPathSegment::Named(
-                other.path.segments[self.len()].ident.clone(),
-            )),
+            Ordering::Less => self
+                .last
+                .cmp(&LastItemPathSegment::Named(other.path[self.len()].clone())),
             Ordering::Equal => self.last.cmp(&other.last),
             Ordering::Greater => {
-                LastItemPathSegment::Named(self.path.segments[other.len()].ident.clone())
-                    .cmp(&self.last)
+                LastItemPathSegment::Named(self.path[other.len()].clone()).cmp(&self.last)
             }
         }
     }
@@ -239,36 +228,24 @@ impl Ord for ItemPath {
 #[cfg(test)]
 impl Parse for ItemPath {
     fn parse(input: ParseStream) -> ParseResult<ItemPath> {
-        // TODO: parse path as a vector of idents
-        let mut p = Path {
-            leading_colon: None,
-            segments: Punctuated::new(),
-        };
-
-        p.segments.push(input.parse().unwrap());
+        let mut path = Vec::new();
+        path.push(input.parse::<Ident>()?);
 
         while input.peek(Token![::]) {
             input.parse::<Token![::]>().unwrap();
 
             if input.peek(Ident) {
-                p.segments.push(input.parse().unwrap());
+                path.push(input.parse::<Ident>().unwrap());
+            } else if input.peek(LitInt) {
+                let id = input.parse::<LitInt>().unwrap().base10_parse().unwrap();
+                return Ok(ItemPath::new_unnamed(path, id));
             } else {
-                break;
+                return Err(input.error("Expected an identifier or a number"));
             }
         }
 
-        if input.peek(LitInt) {
-            let id: usize = input.parse::<LitInt>().unwrap().base10_parse().unwrap();
-            Ok(ItemPath::new_unnamed(p, id))
-        } else {
-            let last = p.segments.pop().unwrap().value().ident.clone();
-
-            if let Some(last_segment) = p.segments.pop() {
-                p.segments.push(last_segment.value().clone());
-            }
-
-            Ok(ItemPath::new_named(p, last))
-        }
+        let last_segment = path.pop().unwrap();
+        Ok(ItemPath::new_named(path, last_segment))
     }
 }
 
