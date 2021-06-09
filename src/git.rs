@@ -2,8 +2,6 @@ use anyhow::{Context, Result as AnyResult};
 
 use git2::{Repository, StashFlags, StatusOptions};
 
-pub(crate) static DEFAULT_BRANCH_NAME: &str = "main";
-
 pub(crate) trait GitBackend: Sized {
     fn switch_to(&mut self, id: &str) -> AnyResult<()> {
         if self.needs_stash() {

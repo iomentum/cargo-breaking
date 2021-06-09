@@ -1,4 +1,5 @@
 mod ast;
+mod cli;
 mod comparator;
 mod git;
 mod glue;
@@ -14,13 +15,15 @@ use crate::{
 };
 
 pub fn run() -> AnyResult<()> {
+    let config = cli::ProgramConfig::parse();
+
     let mut repo = CrateRepo::current().context("Failed to fetch repository data")?;
 
     let current_api = glue::extract_api().context("Failed to get crate API")?;
     let version = manifest::get_crate_version().context("Failed to get crate version")?;
 
-    repo.switch_to(git::DEFAULT_BRANCH_NAME)
-        .with_context(|| format!("Failed to checkout to `{}`", git::DEFAULT_BRANCH_NAME))?;
+    repo.switch_to(config.comparaison_ref.as_str())
+        .with_context(|| format!("Failed to checkout to `{}`", config.comparaison_ref))?;
 
     let previous_api = glue::extract_api().context("Failed to get crate API")?;
 
