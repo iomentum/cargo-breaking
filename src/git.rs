@@ -3,6 +3,25 @@ use anyhow::{Context, Result as AnyResult};
 use git2::{Repository, StashFlags, StatusOptions};
 
 pub(crate) trait GitBackend: Sized {
+    fn run_in<F, O>(&mut self, id: &str, f: F) -> AnyResult<O>
+    where
+        F: FnOnce() -> O,
+    {
+        self.switch_to(id)
+            .with_context(|| format!("Failed to checkout to {}", id))?;
+
+        let rslt = f();
+
+        self.switch_back().with_context(|| {
+            format!(
+                "Failed to switch back to {}",
+                self.previous_branch().unwrap()
+            )
+        })?;
+
+        Ok(rslt)
+    }
+
     fn switch_to(&mut self, id: &str) -> AnyResult<()> {
         if self.needs_stash() {
             self.stash_push().context("Failed to stash changes")?;

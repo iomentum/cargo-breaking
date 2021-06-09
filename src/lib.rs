@@ -19,16 +19,13 @@ pub fn run() -> AnyResult<()> {
 
     let mut repo = CrateRepo::current().context("Failed to fetch repository data")?;
 
-    let current_api = glue::extract_api().context("Failed to get crate API")?;
     let version = manifest::get_crate_version().context("Failed to get crate version")?;
 
-    repo.switch_to(config.comparaison_ref.as_str())
-        .with_context(|| format!("Failed to checkout to `{}`", config.comparaison_ref))?;
+    let current_api = glue::extract_api().context("Failed to get crate API")?;
 
-    let previous_api = glue::extract_api().context("Failed to get crate API")?;
-
-    repo.switch_back()
-        .context("Failed to go back to initial branch")?;
+    let previous_api = repo.run_in(config.comparaison_ref.as_str(), || {
+        glue::extract_api().context("Failed to get crate API")
+    })??;
 
     let api_comparator = ApiComparator::new(previous_api, current_api);
 
