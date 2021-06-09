@@ -31,7 +31,9 @@ pub fn run() -> AnyResult<()> {
 
     let diagnosis = api_comparator.run();
 
-    println!("{}", diagnosis);
+    if !diagnosis.is_empty() {
+        println!("{}", diagnosis);
+    }
 
     let next_version = diagnosis.guess_next_version(version);
     println!("Next version is: {}", next_version);
