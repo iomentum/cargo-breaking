@@ -5,8 +5,9 @@ use std::{
 };
 
 use syn::{
-    visit::{visit_item_mod, Visit},
-    Expr, Field, Generics, Ident, ItemFn, ItemMod, ItemStruct, Signature, Type, Visibility,
+    visit::{visit_item_enum, visit_item_mod, Visit},
+    Expr, Field, Generics, Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, Signature, Type, Variant,
+    Visibility,
 };
 
 #[cfg(test)]
@@ -87,11 +88,34 @@ impl<'ast> Visit<'ast> for AstVisitor {
         }
 
         let k = ItemPath::new_named(self.path.clone(), i.ident.clone());
-        let v = Struct::new(i.generics.clone()).into();
+        let v = DataType::new(i.generics.clone()).into();
 
         let tmp = self.items.insert(k, v);
         assert!(tmp.is_none(), "An item is defined twice");
 
+        self.add_path_segment(i.ident.clone());
+        let mut fields_visitor = FieldsVisitor::new(self.path.as_slice(), 0, &mut self.items);
+        fields_visitor.visit_fields(&i.fields);
+        self.remove_path_segment();
+    }
+
+    fn visit_item_enum(&mut self, i: &'ast ItemEnum) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
+        let k = ItemPath::new_named(self.path.clone(), i.ident.clone());
+        let v = DataType::new(i.generics.clone()).into();
+
+        let tmp = self.items.insert(k, v);
+        assert!(tmp.is_none(), "An item is defined twice");
+
+        self.add_path_segment(i.ident.clone());
+        visit_item_enum(self, i);
+        self.remove_path_segment();
+    }
+
+    fn visit_variant(&mut self, i: &'ast Variant) {
         self.add_path_segment(i.ident.clone());
         let mut fields_visitor = FieldsVisitor::new(self.path.as_slice(), 0, &mut self.items);
         fields_visitor.visit_fields(&i.fields);
@@ -278,11 +302,10 @@ impl Ord for LastItemPathSegment {
     }
 }
 
-// TODO: handle public/private fields
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ItemKind {
     Fn(FnPrototype),
-    Struct(Struct),
+    DataType(DataType),
     DataField(DataField),
 }
 
@@ -293,7 +316,7 @@ impl Parse for ItemKind {
             .parse::<FnPrototype>()
             .map(Into::into)
             .or_else(|mut e| {
-                input.parse::<Struct>().map(Into::into).map_err(|e_| {
+                input.parse::<DataType>().map(Into::into).map_err(|e_| {
                     e.combine(e_);
                     e
                 })
@@ -313,9 +336,9 @@ impl From<FnPrototype> for ItemKind {
     }
 }
 
-impl From<Struct> for ItemKind {
-    fn from(item: Struct) -> Self {
-        ItemKind::Struct(item)
+impl From<DataType> for ItemKind {
+    fn from(item: DataType) -> Self {
+        ItemKind::DataType(item)
     }
 }
 
@@ -355,22 +378,35 @@ impl Parse for FnPrototype {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Struct {
+pub(crate) struct DataType {
     generics: Generics,
 }
 
-impl Struct {
-    fn new(generics: Generics) -> Struct {
-        Struct { generics }
+impl DataType {
+    fn new(generics: Generics) -> DataType {
+        DataType { generics }
     }
 }
 
 #[cfg(test)]
-impl Parse for Struct {
-    fn parse(input: ParseStream) -> ParseResult<Struct> {
-        let struct_ = input.parse::<ItemStruct>()?;
-        let ItemStruct { generics, .. } = struct_;
-        Ok(Struct { generics })
+impl Parse for DataType {
+    fn parse(input: ParseStream) -> ParseResult<DataType> {
+        let input2 = input.fork();
+
+        let _ = input2.parse::<Visibility>();
+
+        let generics = if input2.peek(Token![struct]) {
+            input.parse::<ItemStruct>()?.generics
+        } else if input2.peek(Token![enum]) {
+            input.parse::<ItemEnum>()?.generics
+        } else {
+            return Err(syn::Error::new(
+                input2.span(),
+                "Excepted a struct or an enum",
+            ));
+        };
+
+        Ok(DataType { generics })
     }
 }
 
@@ -424,9 +460,24 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("pub struct A;").unwrap();
+            let item = parse_str::<ItemKind>("struct A;").unwrap();
 
             let k = parse_str("A").unwrap();
+            let left = public_api.items.get(&k);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_enum() {
+            let public_api = PublicApi::from_str("pub enum B {}");
+
+            assert_eq!(public_api.items.len(), 1);
+
+            let item = parse_str::<ItemKind>("enum B {}").unwrap();
+
+            let k = parse_str("B").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -457,6 +508,36 @@ mod tests {
             let item = parse_str::<ItemKind>("u8").unwrap();
 
             let k = parse_str("A::0").unwrap();
+            let left = public_api.items.get(&k);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_named_enum_variant_fields() {
+            let public_api = PublicApi::from_str("pub enum A { B { pub c: u8 } }");
+
+            assert_eq!(public_api.items.len(), 2);
+
+            let item = parse_str::<ItemKind>("u8").unwrap();
+
+            let k = parse_str("A::B::c").unwrap();
+            let left = public_api.items.get(&k);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_unnamed_enum_variant_fields() {
+            let public_api = PublicApi::from_str("pub enum A { B(pub u8) }");
+
+            assert_eq!(public_api.items.len(), 2);
+
+            let item = parse_str::<ItemKind>("u8").unwrap();
+
+            let k = parse_str("A::B::0").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
