@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod ast;
 mod comparator;
 mod git;

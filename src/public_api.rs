@@ -420,17 +420,9 @@ impl Parse for DataField {
 
 #[cfg(test)]
 mod tests {
-    use syn::{parse_str, ItemFn};
+    use syn::parse_str;
 
     use super::*;
-
-    fn sample_path() -> Path {
-        parse_str("crate::foo").unwrap()
-    }
-
-    fn sample_private_fn() -> ItemFn {
-        parse_str("fn fact(n: u32) -> u32 {}").unwrap()
-    }
 
     mod public_api {
         use std::str::FromStr;

@@ -1,5 +1,3 @@
-use cargo_breaking;
-
 #[test]
 fn private_is_not_reported() {
     let comparator = cargo_breaking::compare("", "struct A;").unwrap();
