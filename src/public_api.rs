@@ -2,13 +2,12 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
-    iter,
 };
 
 use syn::{
     punctuated::Punctuated,
     visit::{visit_item_mod, Visit},
-    Expr, Fields, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature,
+    Expr, Field, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature, Type,
     Visibility,
 };
 
@@ -42,7 +41,10 @@ impl PublicApi {
 }
 
 #[cfg(test)]
-use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult};
+use syn::{
+    parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
+    LitInt, Token,
+};
 
 use crate::ast::CrateAst;
 
@@ -63,6 +65,18 @@ impl AstVisitor {
             path,
         }
     }
+
+    fn add_path_segment(&mut self, i: Ident) {
+        let last_segment = PathSegment {
+            ident: i,
+            arguments: syn::PathArguments::None,
+        };
+        self.path.segments.push(last_segment);
+    }
+
+    fn remove_path_segment(&mut self) {
+        self.path.segments.pop().unwrap();
+    }
 }
 
 impl<'ast> Visit<'ast> for AstVisitor {
@@ -71,7 +85,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let k = ItemPath::new(self.path.clone(), i.sig.ident.clone());
+        let k = ItemPath::new_named(self.path.clone(), i.sig.ident.clone());
         let v = FnPrototype::new(i.sig.clone()).into();
 
         let tmp = self.items.insert(k, v);
@@ -83,45 +97,96 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let k = ItemPath::new(self.path.clone(), i.ident.clone());
-        let v = Struct::new(i.generics.clone(), i.fields.clone()).into();
+        let k = ItemPath::new_named(self.path.clone(), i.ident.clone());
+        let v = Struct::new(i.generics.clone()).into();
 
         let tmp = self.items.insert(k, v);
         assert!(tmp.is_none(), "An item is defined twice");
+
+        self.add_path_segment(i.ident.clone());
+        let mut fields_visitor = FieldsVisitor::new(&self.path, 0, &mut self.items);
+        fields_visitor.visit_fields(&i.fields);
+        self.remove_path_segment();
     }
 
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
-        let last_segment = PathSegment {
-            ident: i.ident.clone(),
-            arguments: syn::PathArguments::None,
-        };
-        self.path.segments.push(last_segment);
-
+        self.add_path_segment(i.ident.clone());
         visit_item_mod(self, i);
-
-        self.path.segments.pop().unwrap();
+        self.remove_path_segment();
     }
 
     fn visit_expr(&mut self, _: &'ast Expr) {}
 }
 
+struct FieldsVisitor<'a> {
+    item_path: &'a Path,
+    field_id: usize,
+    items: &'a mut HashMap<ItemPath, ItemKind>,
+}
+
+impl<'a> FieldsVisitor<'a> {
+    fn new(
+        item_path: &'a Path,
+        field_id: usize,
+        items: &'a mut HashMap<ItemPath, ItemKind>,
+    ) -> Self {
+        Self {
+            item_path,
+            field_id,
+            items,
+        }
+    }
+
+    fn add_field(&mut self, name: Option<&Ident>, ty: Type) {
+        let item_path = self.item_path.clone();
+
+        let key = match name {
+            Some(name) => ItemPath::new_named(item_path, name.clone()),
+            None => ItemPath::new_unnamed(item_path, self.field_id),
+        };
+
+        self.field_id += 1;
+
+        let value = DataField::new(ty);
+
+        let tmp = self.items.insert(key, value.into());
+
+        assert!(tmp.is_none(), "Field is defined twice");
+    }
+}
+
+impl<'ast> Visit<'ast> for FieldsVisitor<'_> {
+    fn visit_field(&mut self, i: &'ast Field) {
+        let Field { ident, ty, vis, .. } = i;
+
+        if !matches!(vis, Visibility::Public(_)) {
+            return;
+        }
+
+        self.add_field(ident.as_ref(), ty.clone());
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ItemPath {
+    // TODO: use a Vec<Ident> to strore path instead
     path: Path,
-    name: Ident,
+    last: LastItemPathSegment,
 }
 
 impl ItemPath {
-    fn new(path: Path, name: Ident) -> ItemPath {
-        ItemPath { path, name }
+    fn new_named(path: Path, name: Ident) -> ItemPath {
+        let last = LastItemPathSegment::Named(name);
+        ItemPath { path, last }
     }
 
-    fn idents(&self) -> impl Iterator<Item = &Ident> {
-        self.path
-            .segments
-            .iter()
-            .map(|seg| &seg.ident)
-            .chain(iter::once(&self.name))
+    fn new_unnamed(path: Path, id: usize) -> ItemPath {
+        let last = LastItemPathSegment::Id(id);
+        ItemPath { path, last }
+    }
+
+    fn path_idents(&self) -> impl Iterator<Item = &Ident> {
+        self.path.segments.iter().map(|seg| &seg.ident)
     }
 
     fn len(&self) -> usize {
@@ -136,7 +201,7 @@ impl Display for ItemPath {
             .iter()
             .try_for_each(|segment| write!(f, "{}::", segment.ident))?;
 
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.last)
     }
 }
 
@@ -148,7 +213,7 @@ impl PartialOrd for ItemPath {
 
 impl Ord for ItemPath {
     fn cmp(&self, other: &Self) -> Ordering {
-        let idents = self.idents().zip(other.idents());
+        let idents = self.path_idents().zip(other.path_idents());
 
         for (seg_a, seg_b) in idents {
             let order = seg_a.cmp(seg_b);
@@ -157,23 +222,85 @@ impl Ord for ItemPath {
             }
         }
 
-        self.len().cmp(&other.len())
+        // TODO: figure out a better way to handle last-segment comparaison
+        match self.len().cmp(&other.len()) {
+            Ordering::Less => self.last.cmp(&LastItemPathSegment::Named(
+                other.path.segments[self.len()].ident.clone(),
+            )),
+            Ordering::Equal => self.last.cmp(&other.last),
+            Ordering::Greater => {
+                LastItemPathSegment::Named(self.path.segments[other.len()].ident.clone())
+                    .cmp(&self.last)
+            }
+        }
     }
 }
 
 #[cfg(test)]
 impl Parse for ItemPath {
     fn parse(input: ParseStream) -> ParseResult<ItemPath> {
-        let mut path = Path::parse(input)?;
-        let name = path.segments.pop().unwrap().value().ident.clone();
+        // TODO: parse path as a vector of idents
+        let mut p = Path {
+            leading_colon: None,
+            segments: Punctuated::new(),
+        };
 
-        let last_segment = path.segments.pop();
+        p.segments.push(input.parse().unwrap());
 
-        if let Some(last_segment) = last_segment {
-            path.segments.push(last_segment.value().clone());
+        while input.peek(Token![::]) {
+            input.parse::<Token![::]>().unwrap();
+
+            if input.peek(Ident) {
+                p.segments.push(input.parse().unwrap());
+            } else {
+                break;
+            }
         }
 
-        Ok(ItemPath { path, name })
+        if input.peek(LitInt) {
+            let id: usize = input.parse::<LitInt>().unwrap().base10_parse().unwrap();
+            Ok(ItemPath::new_unnamed(p, id))
+        } else {
+            let last = p.segments.pop().unwrap().value().ident.clone();
+
+            if let Some(last_segment) = p.segments.pop() {
+                p.segments.push(last_segment.value().clone());
+            }
+
+            Ok(ItemPath::new_named(p, last))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum LastItemPathSegment {
+    Named(Ident),
+    Id(usize),
+}
+
+impl Display for LastItemPathSegment {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            LastItemPathSegment::Named(n) => write!(f, "{}", n),
+            LastItemPathSegment::Id(i) => write!(f, "{}", i),
+        }
+    }
+}
+
+impl PartialOrd for LastItemPathSegment {
+    fn partial_cmp(&self, other: &LastItemPathSegment) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LastItemPathSegment {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (LastItemPathSegment::Named(a), LastItemPathSegment::Named(b)) => a.cmp(b),
+            (LastItemPathSegment::Named(_), LastItemPathSegment::Id(_)) => Ordering::Greater,
+            (LastItemPathSegment::Id(_), LastItemPathSegment::Named(_)) => Ordering::Less,
+            (LastItemPathSegment::Id(a), LastItemPathSegment::Id(b)) => a.cmp(b),
+        }
     }
 }
 
@@ -182,26 +309,27 @@ impl Parse for ItemPath {
 pub(crate) enum ItemKind {
     Fn(FnPrototype),
     Struct(Struct),
+    DataField(DataField),
 }
 
 #[cfg(test)]
 impl Parse for ItemKind {
     fn parse(input: ParseStream) -> ParseResult<ItemKind> {
-        let try_fn = input.parse::<FnPrototype>();
-        let try_struct = input.parse::<Struct>();
-
-        match (try_fn, try_struct) {
-            (Ok(f), Err(_)) => Ok(f.into()),
-
-            (Err(_), Ok(s)) => Ok(s.into()),
-
-            (Err(mut a), Err(b)) => {
-                a.combine(b);
-                Err(a)
-            }
-
-            (Ok(_), Ok(_)) => unreachable!(),
-        }
+        input
+            .parse::<FnPrototype>()
+            .map(Into::into)
+            .or_else(|mut e| {
+                input.parse::<Struct>().map(Into::into).map_err(|e_| {
+                    e.combine(e_);
+                    e
+                })
+            })
+            .or_else(|mut e| {
+                input.parse::<DataField>().map(Into::into).map_err(|e_| {
+                    e.combine(e_);
+                    e
+                })
+            })
     }
 }
 
@@ -214,6 +342,12 @@ impl From<FnPrototype> for ItemKind {
 impl From<Struct> for ItemKind {
     fn from(item: Struct) -> Self {
         ItemKind::Struct(item)
+    }
+}
+
+impl From<DataField> for ItemKind {
+    fn from(v: DataField) -> Self {
+        Self::DataField(v)
     }
 }
 
@@ -249,12 +383,11 @@ impl Parse for FnPrototype {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Struct {
     generics: Generics,
-    fields: Fields,
 }
 
 impl Struct {
-    fn new(generics: Generics, fields: Fields) -> Struct {
-        Struct { generics, fields }
+    fn new(generics: Generics) -> Struct {
+        Struct { generics }
     }
 }
 
@@ -262,10 +395,26 @@ impl Struct {
 impl Parse for Struct {
     fn parse(input: ParseStream) -> ParseResult<Struct> {
         let struct_ = input.parse::<ItemStruct>()?;
-        let ItemStruct {
-            generics, fields, ..
-        } = struct_;
-        Ok(Struct { generics, fields })
+        let ItemStruct { generics, .. } = struct_;
+        Ok(Struct { generics })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DataField {
+    ty: Type,
+}
+
+impl DataField {
+    fn new(ty: Type) -> DataField {
+        DataField { ty }
+    }
+}
+
+#[cfg(test)]
+impl Parse for DataField {
+    fn parse(input: ParseStream) -> ParseResult<DataField> {
+        Ok(DataField { ty: input.parse()? })
     }
 }
 
@@ -316,6 +465,36 @@ mod tests {
             let item = parse_str::<ItemKind>("pub struct A;").unwrap();
 
             let k = parse_str("A").unwrap();
+            let left = public_api.items.get(&k);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_named_struct_fields() {
+            let public_api = PublicApi::from_str("pub struct A { pub a: u8 }");
+
+            assert_eq!(public_api.items.len(), 2);
+
+            let item = parse_str::<ItemKind>("u8").unwrap();
+
+            let k = parse_str("A::a").unwrap();
+            let left = public_api.items.get(&k);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn add_unnamed_struct_fields() {
+            let public_api = PublicApi::from_str("pub struct A(pub u8);");
+
+            assert_eq!(public_api.items.len(), 2);
+
+            let item = parse_str::<ItemKind>("u8").unwrap();
+
+            let k = parse_str("A::0").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
