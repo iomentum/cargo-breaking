@@ -3,7 +3,7 @@ fn private_is_not_reported() {
     let comparator = cargo_breaking::compare("", "struct A;").unwrap();
     let diff = comparator.run();
 
-    assert!(diff.to_string().is_empty());
+    assert!(diff.is_empty());
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn new_private_field_tupled() {
     let comparator = cargo_breaking::compare("pub struct C();", "pub struct C(usize);").unwrap();
     let diff = comparator.run();
 
-    assert!(diff.to_string().is_empty());
+    assert!(diff.is_empty());
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn new_private_field_named() {
         cargo_breaking::compare("pub struct D { a: b }", "pub struct D { a: b, c: d }").unwrap();
     let diff = comparator.run();
 
-    assert!(diff.to_string().is_empty());
+    assert!(diff.is_empty());
 }
 
 #[test]

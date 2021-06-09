@@ -3,7 +3,7 @@ fn private_is_not_reported() {
     let comparator = cargo_breaking::compare("", "fn fact(n: u32) -> u32 {}").unwrap();
     let rslt = comparator.run();
 
-    assert!(rslt.to_string().is_empty());
+    assert!(rslt.is_empty());
 }
 
 #[test]
@@ -36,5 +36,5 @@ fn body_change_not_detected() {
         cargo_breaking::compare("pub fn fact() {}", "pub fn fact() { todo!() }").unwrap();
     let rslt = comparator.run();
 
-    assert!(rslt.to_string().is_empty());
+    assert!(rslt.is_empty());
 }

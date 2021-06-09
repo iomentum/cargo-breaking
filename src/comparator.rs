@@ -83,6 +83,10 @@ impl Display for ApiCompatibilityDiagnostics<'_> {
 }
 
 impl ApiCompatibilityDiagnostics<'_> {
+    pub fn is_empty(&self) -> bool {
+        self.removals.is_empty() && self.modifications.is_empty() && self.additions.is_empty()
+    }
+
     pub(crate) fn guess_next_version(&self, mut v: Version) -> Version {
         // TODO: handle pre and build data
         if !v.pre.is_empty() {
@@ -272,6 +276,12 @@ mod tests {
                 compatibility_diag!(comp: removal);
                 assert_eq!(comp.to_string(), "- foo::bar::baz\n");
             }
+
+            #[test]
+            fn is_not_empty() {
+                compatibility_diag!(comp: removal);
+                assert!(!comp.is_empty());
+            }
         }
 
         mod modification {
@@ -293,6 +303,12 @@ mod tests {
             fn display() {
                 compatibility_diag!(comp: modification);
                 assert_eq!(comp.to_string(), "≠ foo::bar::baz\n");
+            }
+
+            #[test]
+            fn is_not_empty() {
+                compatibility_diag!(comp: modification);
+                assert!(!comp.is_empty());
             }
         }
 
@@ -317,6 +333,12 @@ mod tests {
                 compatibility_diag!(comp: addition);
                 assert_eq!(comp.to_string(), "+ foo::bar::baz\n");
             }
+
+            #[test]
+            fn is_not_empyt() {
+                compatibility_diag!(comp: addition);
+                assert!(!comp.is_empty());
+            }
         }
 
         mod no_changes {
@@ -332,6 +354,12 @@ mod tests {
             fn is_not_addition() {
                 compatibility_diag!(comp: empty);
                 assert!(!comp.contains_additions());
+            }
+
+            #[test]
+            fn is_empty() {
+                compatibility_diag!(comp: empty);
+                assert!(comp.is_empty());
             }
         }
 
