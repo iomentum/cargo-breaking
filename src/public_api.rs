@@ -9,6 +9,14 @@ use syn::{
     Expr, Field, Generics, Ident, ItemFn, ItemMod, ItemStruct, Signature, Type, Visibility,
 };
 
+#[cfg(test)]
+use syn::{
+    parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
+    LitInt, Token,
+};
+
+use crate::ast::CrateAst;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PublicApi {
     items: HashMap<ItemPath, ItemKind>,
@@ -37,14 +45,6 @@ impl PublicApi {
         PublicApi::from_ast(&ast)
     }
 }
-
-#[cfg(test)]
-use syn::{
-    parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
-    LitInt, Token,
-};
-
-use crate::ast::CrateAst;
 
 struct AstVisitor {
     items: HashMap<ItemPath, ItemKind>,
@@ -158,7 +158,6 @@ impl<'ast> Visit<'ast> for FieldsVisitor<'_> {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ItemPath {
-    // TODO: use a Vec<Ident> to strore path instead
     path: Vec<Ident>,
     last: LastItemPathSegment,
 }
@@ -400,16 +399,13 @@ mod tests {
     use super::*;
 
     mod public_api {
-        use std::str::FromStr;
-
         use syn::parse_file;
 
         use super::*;
 
         #[test]
         fn adds_functions() {
-            let ast = CrateAst::from_str("pub fn fact(n: u32) -> u32 {}").unwrap();
-            let public_api = PublicApi::from_ast(&ast);
+            let public_api = PublicApi::from_str("pub fn fact(n: u32) -> u32 {}");
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -424,8 +420,7 @@ mod tests {
 
         #[test]
         fn adds_structure() {
-            let ast = CrateAst::from_str("pub struct A;").unwrap();
-            let public_api = PublicApi::from_ast(&ast);
+            let public_api = PublicApi::from_str("pub struct A;");
 
             assert_eq!(public_api.items.len(), 1);
 
