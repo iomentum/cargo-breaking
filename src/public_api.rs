@@ -5,10 +5,8 @@ use std::{
 };
 
 use syn::{
-    punctuated::Punctuated,
     visit::{visit_item_mod, Visit},
-    Expr, Field, Generics, Ident, ItemFn, ItemMod, ItemStruct, Path, PathSegment, Signature, Type,
-    Visibility,
+    Expr, Field, Generics, Ident, ItemFn, ItemMod, ItemStruct, Signature, Type, Visibility,
 };
 
 #[derive(Clone, Debug, PartialEq)]
