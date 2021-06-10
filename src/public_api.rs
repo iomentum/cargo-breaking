@@ -9,12 +9,13 @@ use syn::{
     punctuated::Punctuated,
     token::Comma,
     visit::{visit_item_mod, Visit},
-    Expr, Field, Fields, FieldsNamed, FieldsUnnamed, Generics, Ident, ItemEnum, ItemFn, ItemMod,
-    ItemStruct, Signature, Variant, Visibility,
+    Expr, Field, Fields, FieldsNamed, FieldsUnnamed, Generics, Ident, ImplItemMethod, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStruct, Signature, Type, TypePath, Variant, Visibility,
 };
 
 #[cfg(test)]
 use syn::{
+    braced,
     parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
     Token,
 };
@@ -115,7 +116,72 @@ impl<'ast> Visit<'ast> for AstVisitor {
         self.remove_path_segment();
     }
 
+    // TODO: ensure type discovery occurs before item impl discovery, as we
+    // need to know if the said type is public of not.
+    //
+    // This is necessary because the following code snippet compile:
+    //
+    // struct S;
+    //
+    // impl S {
+    //     pub fn f() {}
+    // }
+    //
+    // As can be guessed, S::f can not be called, because S is not public. As
+    // such, it is necessary to know if a type is public or not before
+    // discovering an associated function.
+    fn visit_item_impl(&mut self, i: &'ast ItemImpl) {
+        if i.trait_.is_some() {
+            // TODO: handle trait implementation
+            return;
+        }
+
+        let item_ident = match i.self_ty.as_ref() {
+            // TODO: handle the generics that surround the type itself.
+            Type::Path(TypePath { path, .. }) => match path.get_ident() {
+                Some(ident) => ident.clone(),
+                // TODO: handle paths that are more complicated than a single
+                // identifier.
+                _ => return,
+            },
+            // TODO: handle types that are not paths
+            _ => return,
+        };
+
+        self.add_path_segment(item_ident);
+
+        let mut item_visitor = ImplItemVisitor::new(&self.path, &mut self.items);
+        item_visitor.visit_item_impl(i);
+
+        self.remove_path_segment();
+    }
+
     fn visit_expr(&mut self, _: &'ast Expr) {}
+}
+
+struct ImplItemVisitor<'a> {
+    path: &'a [Ident],
+    items: &'a mut HashMap<ItemPath, ItemKind>,
+}
+
+impl<'a> ImplItemVisitor<'a> {
+    fn new(path: &'a [Ident], items: &'a mut HashMap<ItemPath, ItemKind>) -> ImplItemVisitor<'a> {
+        ImplItemVisitor { path, items }
+    }
+}
+
+impl<'ast> Visit<'ast> for ImplItemVisitor<'_> {
+    fn visit_impl_item_method(&mut self, i: &'ast ImplItemMethod) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
+        let k = ItemPath::new(self.path.to_owned(), i.sig.ident.clone());
+        let v = MethodMetadata::new(i.sig.clone()).into();
+
+        let tmp = self.items.insert(k, v);
+        assert!(tmp.is_none(), "Duplicate item definition");
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -190,6 +256,7 @@ pub(crate) enum ItemKind {
     Fn(FnPrototype),
     Struct(StructMetadata),
     Enum(EnumMetadata),
+    Method(MethodMetadata),
 }
 
 #[cfg(test)]
@@ -213,6 +280,14 @@ impl Parse for ItemKind {
                     e
                 })
             })
+            .or_else(|mut e| {
+                dbg!(input.parse::<MethodMetadata>())
+                    .map(Into::into)
+                    .map_err(|e_| {
+                        e.combine(e_);
+                        e
+                    })
+            })
     }
 }
 
@@ -231,6 +306,12 @@ impl From<StructMetadata> for ItemKind {
 impl From<EnumMetadata> for ItemKind {
     fn from(v: EnumMetadata) -> Self {
         Self::Enum(v)
+    }
+}
+
+impl From<MethodMetadata> for ItemKind {
+    fn from(v: MethodMetadata) -> ItemKind {
+        ItemKind::Method(v)
     }
 }
 
@@ -312,6 +393,30 @@ impl Parse for EnumMetadata {
         } = input.parse()?;
         let variants = variants.into_iter().collect();
         Ok(EnumMetadata { generics, variants })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MethodMetadata {
+    signature: Signature,
+}
+
+impl MethodMetadata {
+    fn new(signature: Signature) -> MethodMetadata {
+        MethodMetadata { signature }
+    }
+}
+
+#[cfg(test)]
+impl Parse for MethodMetadata {
+    fn parse(input: ParseStream) -> ParseResult<MethodMetadata> {
+        input.parse::<Token![impl]>()?;
+        input.parse::<Token![_]>()?;
+
+        let content;
+        braced!(content in input);
+
+        Ok(MethodMetadata::new(content.parse()?))
     }
 }
 
@@ -513,6 +618,24 @@ mod tests {
             let ast = parse_file("pub struct A; pub struct A;").unwrap();
             let mut visitor = AstVisitor::new();
             visitor.visit_file(&ast);
+        }
+
+        #[test]
+        fn adds_associated_function() {
+            let public_api = PublicApi::from_str("pub struct A; impl A { pub fn a() {} }");
+
+            assert_eq!(public_api.items.len(), 2);
+
+            let struct_key = parse_str("A").unwrap();
+            assert!(public_api.items.get(&struct_key).is_some());
+
+            let item = parse_str("impl _ { fn a() }").unwrap();
+
+            let fn_key = parse_str("A::a").unwrap();
+            let left = public_api.items.get(&fn_key);
+            let right = Some(&item);
+
+            assert_eq!(left, right);
         }
     }
 }
