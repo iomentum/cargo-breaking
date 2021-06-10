@@ -2,18 +2,21 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
+    iter,
 };
 
 use syn::{
-    visit::{visit_item_enum, visit_item_mod, Visit},
-    Expr, Field, Generics, Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, Signature, Type, Variant,
-    Visibility,
+    punctuated::Punctuated,
+    token::Comma,
+    visit::{visit_item_mod, Visit},
+    Expr, Field, Fields, FieldsNamed, FieldsUnnamed, Generics, Ident, ItemEnum, ItemFn, ItemMod,
+    ItemStruct, Signature, Variant, Visibility,
 };
 
 #[cfg(test)]
 use syn::{
     parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
-    LitInt, Token,
+    Token,
 };
 
 use crate::ast::CrateAst;
@@ -75,7 +78,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let k = ItemPath::new_named(self.path.clone(), i.sig.ident.clone());
+        let k = ItemPath::new(self.path.clone(), i.sig.ident.clone());
         let v = FnPrototype::new(i.sig.clone()).into();
 
         let tmp = self.items.insert(k, v);
@@ -87,16 +90,11 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let k = ItemPath::new_named(self.path.clone(), i.ident.clone());
-        let v = DataType::new(i.generics.clone()).into();
+        let k = ItemPath::new(self.path.clone(), i.ident.clone());
+        let v = StructMetadata::new(i.generics.clone(), i.fields.clone()).into();
 
         let tmp = self.items.insert(k, v);
         assert!(tmp.is_none(), "An item is defined twice");
-
-        self.add_path_segment(i.ident.clone());
-        let mut fields_visitor = FieldsVisitor::new(self.path.as_slice(), 0, &mut self.items);
-        fields_visitor.visit_fields(&i.fields);
-        self.remove_path_segment();
     }
 
     fn visit_item_enum(&mut self, i: &'ast ItemEnum) {
@@ -104,22 +102,11 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let k = ItemPath::new_named(self.path.clone(), i.ident.clone());
-        let v = DataType::new(i.generics.clone()).into();
+        let k = ItemPath::new(self.path.clone(), i.ident.clone());
+        let v = EnumMetadata::new(i.generics.clone(), i.variants.clone()).into();
 
         let tmp = self.items.insert(k, v);
         assert!(tmp.is_none(), "An item is defined twice");
-
-        self.add_path_segment(i.ident.clone());
-        visit_item_enum(self, i);
-        self.remove_path_segment();
-    }
-
-    fn visit_variant(&mut self, i: &'ast Variant) {
-        self.add_path_segment(i.ident.clone());
-        let mut fields_visitor = FieldsVisitor::new(self.path.as_slice(), 0, &mut self.items);
-        fields_visitor.visit_fields(&i.fields);
-        self.remove_path_segment();
     }
 
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
@@ -131,74 +118,19 @@ impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_expr(&mut self, _: &'ast Expr) {}
 }
 
-struct FieldsVisitor<'a> {
-    item_path: &'a [Ident],
-    field_id: usize,
-    items: &'a mut HashMap<ItemPath, ItemKind>,
-}
-
-impl<'a> FieldsVisitor<'a> {
-    fn new(
-        item_path: &'a [Ident],
-        field_id: usize,
-        items: &'a mut HashMap<ItemPath, ItemKind>,
-    ) -> Self {
-        Self {
-            item_path,
-            field_id,
-            items,
-        }
-    }
-
-    fn add_field(&mut self, name: Option<&Ident>, ty: Type) {
-        let item_path = self.item_path.to_owned();
-
-        let key = match name {
-            Some(name) => ItemPath::new_named(item_path, name.clone()),
-            None => ItemPath::new_unnamed(item_path, self.field_id),
-        };
-
-        self.field_id += 1;
-
-        let value = DataField::new(ty);
-
-        let tmp = self.items.insert(key, value.into());
-
-        assert!(tmp.is_none(), "Field is defined twice");
-    }
-}
-
-impl<'ast> Visit<'ast> for FieldsVisitor<'_> {
-    fn visit_field(&mut self, i: &'ast Field) {
-        let Field { ident, ty, vis, .. } = i;
-
-        if !matches!(vis, Visibility::Public(_)) {
-            return;
-        }
-
-        self.add_field(ident.as_ref(), ty.clone());
-    }
-}
-
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ItemPath {
     path: Vec<Ident>,
-    last: LastItemPathSegment,
+    last: Ident,
 }
 
 impl ItemPath {
-    fn new_named(path: Vec<Ident>, name: Ident) -> ItemPath {
-        let last = LastItemPathSegment::Named(name);
-        ItemPath { last, path }
-    }
-
-    fn new_unnamed(path: Vec<Ident>, id: usize) -> ItemPath {
-        let last = LastItemPathSegment::Id(id);
+    fn new(path: Vec<Ident>, last: Ident) -> ItemPath {
         ItemPath { last, path }
     }
 
     fn path_idents(&self) -> impl Iterator<Item = &Ident> {
-        self.path.iter()
+        self.path.iter().chain(iter::once(&self.last))
     }
 
     fn len(&self) -> usize {
@@ -233,16 +165,7 @@ impl Ord for ItemPath {
             }
         }
 
-        // TODO: figure out a better way to handle last-segment comparaison
-        match self.len().cmp(&other.len()) {
-            Ordering::Less => self
-                .last
-                .cmp(&LastItemPathSegment::Named(other.path[self.len()].clone())),
-            Ordering::Equal => self.last.cmp(&other.last),
-            Ordering::Greater => {
-                LastItemPathSegment::Named(self.path[other.len()].clone()).cmp(&self.last)
-            }
-        }
+        self.len().cmp(&other.len())
     }
 }
 
@@ -254,59 +177,19 @@ impl Parse for ItemPath {
 
         while input.peek(Token![::]) {
             input.parse::<Token![::]>().unwrap();
-
-            if input.peek(Ident) {
-                path.push(input.parse::<Ident>().unwrap());
-            } else if input.peek(LitInt) {
-                let id = input.parse::<LitInt>().unwrap().base10_parse().unwrap();
-                return Ok(ItemPath::new_unnamed(path, id));
-            } else {
-                return Err(input.error("Expected an identifier or a number"));
-            }
+            path.push(input.parse()?);
         }
 
         let last_segment = path.pop().unwrap();
-        Ok(ItemPath::new_named(path, last_segment))
-    }
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum LastItemPathSegment {
-    Named(Ident),
-    Id(usize),
-}
-
-impl Display for LastItemPathSegment {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            LastItemPathSegment::Named(n) => write!(f, "{}", n),
-            LastItemPathSegment::Id(i) => write!(f, "{}", i),
-        }
-    }
-}
-
-impl PartialOrd for LastItemPathSegment {
-    fn partial_cmp(&self, other: &LastItemPathSegment) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for LastItemPathSegment {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (LastItemPathSegment::Named(a), LastItemPathSegment::Named(b)) => a.cmp(b),
-            (LastItemPathSegment::Named(_), LastItemPathSegment::Id(_)) => Ordering::Greater,
-            (LastItemPathSegment::Id(_), LastItemPathSegment::Named(_)) => Ordering::Less,
-            (LastItemPathSegment::Id(a), LastItemPathSegment::Id(b)) => a.cmp(b),
-        }
+        Ok(ItemPath::new(path, last_segment))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ItemKind {
     Fn(FnPrototype),
-    DataType(DataType),
-    DataField(DataField),
+    Struct(StructMetadata),
+    Enum(EnumMetadata),
 }
 
 #[cfg(test)]
@@ -316,13 +199,16 @@ impl Parse for ItemKind {
             .parse::<FnPrototype>()
             .map(Into::into)
             .or_else(|mut e| {
-                input.parse::<DataType>().map(Into::into).map_err(|e_| {
-                    e.combine(e_);
-                    e
-                })
+                input
+                    .parse::<StructMetadata>()
+                    .map(Into::into)
+                    .map_err(|e_| {
+                        e.combine(e_);
+                        e
+                    })
             })
             .or_else(|mut e| {
-                input.parse::<DataField>().map(Into::into).map_err(|e_| {
+                input.parse::<EnumMetadata>().map(Into::into).map_err(|e_| {
                     e.combine(e_);
                     e
                 })
@@ -336,15 +222,15 @@ impl From<FnPrototype> for ItemKind {
     }
 }
 
-impl From<DataType> for ItemKind {
-    fn from(item: DataType) -> Self {
-        ItemKind::DataType(item)
+impl From<StructMetadata> for ItemKind {
+    fn from(item: StructMetadata) -> Self {
+        ItemKind::Struct(item)
     }
 }
 
-impl From<DataField> for ItemKind {
-    fn from(v: DataField) -> Self {
-        Self::DataField(v)
+impl From<EnumMetadata> for ItemKind {
+    fn from(v: EnumMetadata) -> Self {
+        Self::Enum(v)
     }
 }
 
@@ -378,53 +264,122 @@ impl Parse for FnPrototype {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataType {
+pub(crate) struct StructMetadata {
     generics: Generics,
+    fields: Fields,
 }
 
-impl DataType {
-    fn new(generics: Generics) -> DataType {
-        DataType { generics }
+impl StructMetadata {
+    fn new(generics: Generics, fields: Fields) -> StructMetadata {
+        let fields = fields.remove_private_fields();
+        StructMetadata { generics, fields }
     }
 }
 
 #[cfg(test)]
-impl Parse for DataType {
-    fn parse(input: ParseStream) -> ParseResult<DataType> {
-        let input2 = input.fork();
+impl Parse for StructMetadata {
+    fn parse(input: ParseStream) -> ParseResult<StructMetadata> {
+        let ItemStruct {
+            generics, fields, ..
+        } = input.parse()?;
 
-        let _ = input2.parse::<Visibility>();
-
-        let generics = if input2.peek(Token![struct]) {
-            input.parse::<ItemStruct>()?.generics
-        } else if input2.peek(Token![enum]) {
-            input.parse::<ItemEnum>()?.generics
-        } else {
-            return Err(syn::Error::new(
-                input2.span(),
-                "Excepted a struct or an enum",
-            ));
-        };
-
-        Ok(DataType { generics })
+        Ok(StructMetadata::new(generics, fields))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataField {
-    ty: Type,
+pub(crate) struct EnumMetadata {
+    generics: Generics,
+    variants: Vec<Variant>,
 }
 
-impl DataField {
-    fn new(ty: Type) -> DataField {
-        DataField { ty }
+impl EnumMetadata {
+    fn new(generics: Generics, variants: Punctuated<Variant, Comma>) -> EnumMetadata {
+        let variants = variants
+            .into_iter()
+            .map(Variant::remove_private_fields)
+            .collect();
+
+        EnumMetadata { generics, variants }
     }
 }
 
 #[cfg(test)]
-impl Parse for DataField {
-    fn parse(input: ParseStream) -> ParseResult<DataField> {
-        Ok(DataField { ty: input.parse()? })
+impl Parse for EnumMetadata {
+    fn parse(input: ParseStream) -> ParseResult<EnumMetadata> {
+        let ItemEnum {
+            generics, variants, ..
+        } = input.parse()?;
+        let variants = variants.into_iter().collect();
+        Ok(EnumMetadata { generics, variants })
+    }
+}
+
+trait ContainsPrivateFields {
+    fn remove_private_fields(self) -> Self;
+}
+
+impl ContainsPrivateFields for Variant {
+    fn remove_private_fields(self) -> Self {
+        let Variant {
+            attrs,
+            ident,
+            mut fields,
+            discriminant,
+        } = self;
+        fields = fields.remove_private_fields();
+
+        Variant {
+            attrs,
+            ident,
+            fields,
+            discriminant,
+        }
+    }
+}
+
+impl ContainsPrivateFields for Fields {
+    fn remove_private_fields(self) -> Self {
+        match self {
+            Fields::Named(named) => Fields::Named(named.remove_private_fields()),
+            Fields::Unnamed(unnamed) => Fields::Unnamed(unnamed.remove_private_fields()),
+            Fields::Unit => Fields::Unit,
+        }
+    }
+}
+
+impl ContainsPrivateFields for FieldsNamed {
+    fn remove_private_fields(self) -> Self {
+        let FieldsNamed {
+            brace_token,
+            mut named,
+        } = self;
+        named = named.remove_private_fields();
+
+        FieldsNamed { brace_token, named }
+    }
+}
+
+impl ContainsPrivateFields for FieldsUnnamed {
+    fn remove_private_fields(self) -> Self {
+        let FieldsUnnamed {
+            paren_token,
+            mut unnamed,
+        } = self;
+        unnamed = unnamed.remove_private_fields();
+
+        FieldsUnnamed {
+            paren_token,
+            unnamed,
+        }
+    }
+}
+
+impl<U: Default> ContainsPrivateFields for Punctuated<Field, U> {
+    fn remove_private_fields(self) -> Self {
+        self.into_iter()
+            .filter(|field| matches!(field.vis, Visibility::Public(_)))
+            .collect()
     }
 }
 
@@ -485,14 +440,14 @@ mod tests {
         }
 
         #[test]
-        fn adds_named_struct_fields() {
-            let public_api = PublicApi::from_str("pub struct A { pub a: u8 }");
+        fn filters_private_named_struct_fields() {
+            let public_api = PublicApi::from_str("pub struct A { a: u8, pub b: u8 }");
 
-            assert_eq!(public_api.items.len(), 2);
+            assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("u8").unwrap();
+            let item = parse_str::<ItemKind>("pub struct A { pub b: u8}").unwrap();
 
-            let k = parse_str("A::a").unwrap();
+            let k = parse_str("A").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -500,14 +455,14 @@ mod tests {
         }
 
         #[test]
-        fn add_unnamed_struct_fields() {
-            let public_api = PublicApi::from_str("pub struct A(pub u8);");
+        fn filters_private_unnamed_struct_fields() {
+            let public_api = PublicApi::from_str("pub struct A(u8, pub u8);");
 
-            assert_eq!(public_api.items.len(), 2);
+            assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("u8").unwrap();
+            let item = parse_str::<ItemKind>("pub struct A(pub u8);").unwrap();
 
-            let k = parse_str("A::0").unwrap();
+            let k = parse_str("A").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -515,14 +470,14 @@ mod tests {
         }
 
         #[test]
-        fn adds_named_enum_variant_fields() {
-            let public_api = PublicApi::from_str("pub enum A { B { pub c: u8 } }");
+        fn filters_named_enum_variant() {
+            let public_api = PublicApi::from_str("pub enum A { A { a: u8, pub b: u16 } }");
 
-            assert_eq!(public_api.items.len(), 2);
+            assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("u8").unwrap();
+            let item = parse_str::<ItemKind>("pub enum A { A { pub b: u16 } }").unwrap();
 
-            let k = parse_str("A::B::c").unwrap();
+            let k = parse_str("A").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -530,14 +485,14 @@ mod tests {
         }
 
         #[test]
-        fn adds_unnamed_enum_variant_fields() {
-            let public_api = PublicApi::from_str("pub enum A { B(pub u8) }");
+        fn filters_unnamed_enum_variant() {
+            let public_api = PublicApi::from_str("pub enum A { A(u8, pub u8) }");
 
-            assert_eq!(public_api.items.len(), 2);
+            assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("u8").unwrap();
+            let item = parse_str::<ItemKind>("pub enum A { A(pub u8) }").unwrap();
 
-            let k = parse_str("A::B::0").unwrap();
+            let k = parse_str("A").unwrap();
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
