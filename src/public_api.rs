@@ -9,14 +9,15 @@ use syn::{
     punctuated::Punctuated,
     token::Comma,
     visit::{visit_item_mod, Visit},
-    Expr, Field, Fields, FieldsNamed, FieldsUnnamed, Generics, Ident, ImplItemMethod, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStruct, Signature, Type, TypePath, Variant, Visibility,
+    AngleBracketedGenericArguments, Expr, Field, Fields, FieldsNamed, FieldsUnnamed, Generics,
+    Ident, ImplItemMethod, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, Signature, Type,
+    TypePath, Variant, Visibility,
 };
 
 #[cfg(test)]
 use syn::{
-    braced,
     parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult},
+    spanned::Spanned,
     Token,
 };
 
@@ -136,21 +137,16 @@ impl<'ast> Visit<'ast> for AstVisitor {
             return;
         }
 
-        let item_ident = match i.self_ty.as_ref() {
-            // TODO: handle the generics that surround the type itself.
-            Type::Path(TypePath { path, .. }) => match path.get_ident() {
-                Some(ident) => ident.clone(),
-                // TODO: handle paths that are more complicated than a single
-                // identifier.
-                _ => return,
-            },
-            // TODO: handle types that are not paths
-            _ => return,
+        let (name, generic_args) = match extract_name_and_generic_args(&i.self_ty) {
+            Some((name, generics)) => (name, generics),
+            // TODO: handle non-path implementations.
+            None => return,
         };
 
-        self.add_path_segment(item_ident);
+        self.add_path_segment(name.clone());
 
-        let mut item_visitor = ImplItemVisitor::new(&self.path, &mut self.items);
+        let mut item_visitor =
+            ImplItemVisitor::new(&self.path, &mut self.items, &i.generics, generic_args);
         item_visitor.visit_item_impl(i);
 
         self.remove_path_segment();
@@ -159,14 +155,50 @@ impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_expr(&mut self, _: &'ast Expr) {}
 }
 
+fn extract_name_and_generic_args(
+    ty: &Type,
+) -> Option<(&Ident, Option<&AngleBracketedGenericArguments>)> {
+    let path = match ty {
+        Type::Path(TypePath { path, .. }) => path,
+        _ => return None,
+    };
+
+    let unique_segment = match path.segments.len() {
+        1 => path.segments.first().unwrap(),
+        _ => return None,
+    };
+
+    let name = &unique_segment.ident;
+
+    let generics = match &unique_segment.arguments {
+        syn::PathArguments::None => None,
+        syn::PathArguments::AngleBracketed(args) => Some(args),
+        syn::PathArguments::Parenthesized(_) => return None,
+    };
+
+    Some((name, generics))
+}
+
 struct ImplItemVisitor<'a> {
     path: &'a [Ident],
     items: &'a mut HashMap<ItemPath, ItemKind>,
+    parent_generic_params: &'a Generics,
+    parent_generic_args: Option<&'a AngleBracketedGenericArguments>,
 }
 
 impl<'a> ImplItemVisitor<'a> {
-    fn new(path: &'a [Ident], items: &'a mut HashMap<ItemPath, ItemKind>) -> ImplItemVisitor<'a> {
-        ImplItemVisitor { path, items }
+    fn new(
+        path: &'a [Ident],
+        items: &'a mut HashMap<ItemPath, ItemKind>,
+        parent_generic_params: &'a Generics,
+        parent_generic_args: Option<&'a AngleBracketedGenericArguments>,
+    ) -> ImplItemVisitor<'a> {
+        ImplItemVisitor {
+            path,
+            items,
+            parent_generic_params,
+            parent_generic_args,
+        }
     }
 }
 
@@ -177,7 +209,12 @@ impl<'ast> Visit<'ast> for ImplItemVisitor<'_> {
         }
 
         let k = ItemPath::new(self.path.to_owned(), i.sig.ident.clone());
-        let v = MethodMetadata::new(i.sig.clone()).into();
+        let v = MethodMetadata::new(
+            i.sig.clone(),
+            self.parent_generic_params.clone(),
+            self.parent_generic_args.cloned(),
+        )
+        .into();
 
         let tmp = self.items.insert(k, v);
         assert!(tmp.is_none(), "Duplicate item definition");
@@ -281,7 +318,8 @@ impl Parse for ItemKind {
                 })
             })
             .or_else(|mut e| {
-                dbg!(input.parse::<MethodMetadata>())
+                input
+                    .parse::<MethodMetadata>()
                     .map(Into::into)
                     .map_err(|e_| {
                         e.combine(e_);
@@ -399,24 +437,55 @@ impl Parse for EnumMetadata {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MethodMetadata {
     signature: Signature,
+    parent_generic_params: Generics,
+    parent_generic_args: Option<AngleBracketedGenericArguments>,
 }
 
 impl MethodMetadata {
-    fn new(signature: Signature) -> MethodMetadata {
-        MethodMetadata { signature }
+    fn new(
+        signature: Signature,
+        parent_generic_params: Generics,
+        parent_generic_args: Option<AngleBracketedGenericArguments>,
+    ) -> MethodMetadata {
+        MethodMetadata {
+            signature,
+            parent_generic_params,
+            parent_generic_args,
+        }
     }
 }
 
 #[cfg(test)]
 impl Parse for MethodMetadata {
     fn parse(input: ParseStream) -> ParseResult<MethodMetadata> {
-        input.parse::<Token![impl]>()?;
-        input.parse::<Token![_]>()?;
+        let impl_block = input.parse::<ItemImpl>()?;
 
-        let content;
-        braced!(content in input);
+        let parent_generc_params = &impl_block.generics;
+        let (_, parent_generic_arguments) =
+            extract_name_and_generic_args(&impl_block.self_ty).unwrap();
 
-        Ok(MethodMetadata::new(content.parse()?))
+        let inner_item = match impl_block.items.len() {
+            1 => impl_block.items.last().unwrap(),
+            _ => {
+                return Err(ParseError::new(
+                    impl_block.span(),
+                    "Excepted a single function",
+                ))
+            }
+        };
+
+        let method = match inner_item {
+            syn::ImplItem::Method(m) => m,
+            _ => return Err(ParseError::new(inner_item.span(), "Excepted a method")),
+        };
+
+        let sig = &method.sig;
+
+        Ok(MethodMetadata::new(
+            sig.clone(),
+            parent_generc_params.clone(),
+            parent_generic_arguments.cloned(),
+        ))
     }
 }
 
@@ -629,7 +698,7 @@ mod tests {
             let struct_key = parse_str("A").unwrap();
             assert!(public_api.items.get(&struct_key).is_some());
 
-            let item = parse_str("impl _ { fn a() }").unwrap();
+            let item = parse_str("impl A { fn a() {} }").unwrap();
 
             let fn_key = parse_str("A::a").unwrap();
             let left = public_api.items.get(&fn_key);

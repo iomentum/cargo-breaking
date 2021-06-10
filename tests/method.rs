@@ -39,3 +39,27 @@ fn signature_change_is_modification() {
 
     assert_eq!(diff.to_string(), "≠ A::f\n");
 }
+
+#[test]
+fn generic_param_change_is_modification() {
+    let comparator = cargo_breaking::compare(
+        "pub struct A; impl<T> A { pub fn f() {} }",
+        "pub struct A; impl<U> A { pub fn f() {} }",
+    )
+    .unwrap();
+    let diff = comparator.run();
+
+    assert_eq!(diff.to_string(), "≠ A::f\n");
+}
+
+#[test]
+fn generic_arg_change_is_modification() {
+    let comparator = cargo_breaking::compare(
+        "pub struct A; impl A<T> { pub fn f() {} }",
+        "pub struct A; impl A<U> { pub fn f() {} }",
+    )
+    .unwrap();
+    let diff = comparator.run();
+
+    assert_eq!(diff.to_string(), "≠ A::f\n");
+}
