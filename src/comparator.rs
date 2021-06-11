@@ -6,6 +6,13 @@ use std::{
 
 use semver::{BuildMetadata, Prerelease, Version};
 
+#[cfg(test)]
+use syn::{
+    braced,
+    parse::{Parse, ParseStream, Result as ParseResult},
+    Token,
+};
+
 use crate::public_api::{ItemKind, ItemPath, PublicApi};
 
 pub struct ApiComparator {
@@ -48,12 +55,21 @@ impl ApiComparator {
 }
 
 #[cfg(test)]
-impl ApiComparator {
-    fn from_strs(prev: &str, curr: &str) -> ApiComparator {
-        let previous = PublicApi::from_str(prev);
-        let current = PublicApi::from_str(curr);
+impl Parse for ApiComparator {
+    fn parse(input: ParseStream) -> ParseResult<ApiComparator> {
+        let previous;
+        braced!(previous in input);
 
-        ApiComparator { previous, current }
+        input.parse::<Token![,]>()?;
+
+        let current;
+        braced!(current in input);
+
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>().unwrap();
+        }
+
+        Ok(ApiComparator::new(previous.parse()?, current.parse()?))
     }
 }
 
@@ -171,20 +187,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use syn::parse_str;
+    use syn::parse_quote;
 
     use super::*;
 
     fn item_path_1() -> ItemPath {
-        parse_str("foo::bar::baz").unwrap()
+        parse_quote! { foo::bar::baz }
     }
 
     fn item_kind_1() -> ItemKind {
-        parse_str("pub fn baz(n: usize)").unwrap()
+        parse_quote! { pub fn baz(n: usize) }
     }
 
     fn item_kind_2() -> ItemKind {
-        parse_str("pub fn baz(n: u32) -> u32").unwrap()
+        parse_quote! { pub fn baz(n: u32) -> u32 }
     }
 
     macro_rules! compatibility_diag {
@@ -230,13 +246,20 @@ mod tests {
     mod api_comparator {
         use super::*;
 
-        const EMPTY_FILE: &str = "";
-        const FUNCTION_1: &str = "mod foo { mod bar { pub fn baz(n: usize) {} } }";
-        const FUNCTION_2: &str = "mod foo { mod bar { pub fn baz(n: u32) -> u32 {} } }";
-
         #[test]
         fn removal() {
-            let comparator = ApiComparator::from_strs(FUNCTION_1, EMPTY_FILE);
+            // let comparator = ApiComparator::from_strs(FUNCTION_1, EMPTY_FILE);
+            let comparator: ApiComparator = parse_quote! {
+                {
+                    mod foo {
+                        mod bar {
+                            pub fn baz(n: usize) {}
+                        }
+                    }
+                },
+                {},
+            };
+
             let left = comparator.run();
             compatibility_diag!(right: removal);
 
@@ -245,7 +268,22 @@ mod tests {
 
         #[test]
         fn modification() {
-            let comparator = ApiComparator::from_strs(FUNCTION_1, FUNCTION_2);
+            let comparator: ApiComparator = parse_quote! {
+                {
+                    mod foo {
+                        mod bar {
+                            pub fn baz(n: usize) {}
+                        }
+                    }
+                },
+                {
+                    mod foo {
+                        mod bar {
+                            pub fn baz(n: u32) -> u32 {}
+                        }
+                    }
+                },
+            };
             let left = comparator.run();
             compatibility_diag!(right: modification);
 

@@ -1,5 +1,8 @@
 use syn::{Error as SynError, File};
 
+#[cfg(test)]
+use syn::parse::{Parse, ParseStream, Result as ParseResult};
+
 use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +19,13 @@ impl FromStr for CrateAst {
 
     fn from_str(s: &str) -> Result<CrateAst, SynError> {
         syn::parse_str(s).map(CrateAst)
+    }
+}
+
+#[cfg(test)]
+impl Parse for CrateAst {
+    fn parse(input: ParseStream) -> ParseResult<CrateAst> {
+        Ok(CrateAst(input.parse()?))
     }
 }
 

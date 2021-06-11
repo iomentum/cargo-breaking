@@ -43,6 +43,14 @@ impl PublicApi {
 }
 
 #[cfg(test)]
+impl Parse for PublicApi {
+    fn parse(input: ParseStream) -> ParseResult<PublicApi> {
+        let ast = input.parse()?;
+        Ok(PublicApi::from_ast(&ast))
+    }
+}
+
+#[cfg(test)]
 impl PublicApi {
     pub(crate) fn from_str(s: &str) -> PublicApi {
         use std::str::FromStr;
@@ -562,12 +570,10 @@ impl<U: Default> ContainsPrivateFields for Punctuated<Field, U> {
 
 #[cfg(test)]
 mod tests {
-    use syn::parse_str;
-
     use super::*;
 
     mod public_api {
-        use syn::parse_file;
+        use syn::parse_quote;
 
         use super::*;
 
@@ -577,9 +583,11 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item_kind = parse_str::<ItemKind>("pub fn fact(n: u32) -> u32").unwrap();
+            let item_kind = parse_quote! {
+                pub fn fact(n: u32) -> u32
+            };
 
-            let k = parse_str("fact").unwrap();
+            let k = parse_quote! { fact };
             let left = public_api.items.get(&k);
             let right = Some(&item_kind);
 
@@ -592,9 +600,9 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("struct A;").unwrap();
+            let item = parse_quote! { struct A; };
 
-            let k = parse_str("A").unwrap();
+            let k = parse_quote! { A };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -607,9 +615,9 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("enum B {}").unwrap();
+            let item = parse_quote! { enum B {} };
 
-            let k = parse_str("B").unwrap();
+            let k = parse_quote! { B };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -622,9 +630,13 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("pub struct A { pub b: u8}").unwrap();
+            let item = parse_quote! {
+                pub struct A {
+                    pub b: u8
+                }
+            };
 
-            let k = parse_str("A").unwrap();
+            let k = parse_quote! { A };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -637,9 +649,9 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("pub struct A(pub u8);").unwrap();
+            let item = parse_quote! { pub struct A(pub u8); };
 
-            let k = parse_str("A").unwrap();
+            let k = parse_quote! { A };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -648,13 +660,26 @@ mod tests {
 
         #[test]
         fn filters_named_enum_variant() {
-            let public_api = PublicApi::from_str("pub enum A { A { a: u8, pub b: u16 } }");
+            let public_api: PublicApi = parse_quote! {
+                pub enum A {
+                    A {
+                        a: u8,
+                        pub b: u16,
+                    },
+                }
+            };
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("pub enum A { A { pub b: u16 } }").unwrap();
+            let item = parse_quote! {
+                pub enum A {
+                    A {
+                        pub b: u16
+                    },
+                }
+            };
 
-            let k = parse_str("A").unwrap();
+            let k = parse_quote! { A };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -663,13 +688,21 @@ mod tests {
 
         #[test]
         fn filters_unnamed_enum_variant() {
-            let public_api = PublicApi::from_str("pub enum A { A(u8, pub u8) }");
+            let public_api: PublicApi = parse_quote! {
+                pub enum A {
+                    A(u8, pub u8),
+                }
+            };
 
             assert_eq!(public_api.items.len(), 1);
 
-            let item = parse_str::<ItemKind>("pub enum A { A(pub u8) }").unwrap();
+            let item = parse_quote! {
+                pub enum A {
+                    A(pub u8),
+                }
+            };
 
-            let k = parse_str("A").unwrap();
+            let k = parse_quote! { A };
             let left = public_api.items.get(&k);
             let right = Some(&item);
 
@@ -679,7 +712,11 @@ mod tests {
         #[test]
         #[should_panic(expected = "An item is defined twice")]
         fn panics_on_redefinition_1() {
-            let ast = parse_file("pub fn a () {} pub fn a() {}").unwrap();
+            let ast = parse_quote! {
+                pub fn a () {}
+                pub fn a() {}
+            };
+
             let mut visitor = AstVisitor::new();
             visitor.visit_file(&ast);
         }
@@ -687,7 +724,11 @@ mod tests {
         #[test]
         #[should_panic(expected = "An item is defined twice")]
         fn panics_on_redefinition_2() {
-            let ast = parse_file("pub struct A; pub struct A;").unwrap();
+            let ast = parse_quote! {
+                pub struct A;
+                pub struct A;
+            };
+
             let mut visitor = AstVisitor::new();
             visitor.visit_file(&ast);
         }
@@ -698,12 +739,16 @@ mod tests {
 
             assert_eq!(public_api.items.len(), 2);
 
-            let struct_key = parse_str("A").unwrap();
+            let struct_key = parse_quote! { A };
             assert!(public_api.items.get(&struct_key).is_some());
 
-            let item = parse_str("impl A { fn a() {} }").unwrap();
+            let item = parse_quote! {
+                impl A {
+                    fn a() {}
+                }
+            };
 
-            let fn_key = parse_str("A::a").unwrap();
+            let fn_key = parse_quote! { A::a };
             let left = public_api.items.get(&fn_key);
             let right = Some(&item);
 
