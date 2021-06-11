@@ -42,22 +42,24 @@ to ignore the most subtle ones. This includes, but is not limited to:
 
 ## Status
 
-`cargo-breaking` compares the public API of the crate against what is exposed in
-the `main` branch.
+By default, `cargo-breaking` compares the public API of the crate against what
+is exposed in the `main` branch. This can be changed with the `--against`
+(abbreviated by `-a`) parameter. The value can be a branch name, a tag name, or
+a commit SHA-1.
 
-It searches for functions and reports any change, public or not, compares both
-prototypes, and if any difference is found, decides that there is a modification
-of the function.
+It currently detects the following:
 
-Similarly, `cargo-breaking` compares structures for both versions. If a field
-or a generic argument has changed, no matter its visibility, then a
-breaking change is triggered.
+- functions,
+- struct fields and generic parameters,
+- enum variants, fields and generic parameters,
+- methods when the implemented type is simple enough.
 
-As this comparaison method is very simple, it reports a lot of false positives:
+As we compare parts of the crate AST, it reports a lot of false positives:
 
 - renaming an argument is reported as a breaking change,
 - renaming a generic type is reported as a breaking change,
-- adding a generic type with a default value is a breaking change.
+- adding a generic type with a default value is a breaking change,
+- depending on the situation, adding a trailing comma may be a breaking change.
 
 [semver]: https://semver.org/
 [add-field-pg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=492a1727404d1f8d199962c639454f44
