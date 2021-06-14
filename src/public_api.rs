@@ -7,7 +7,6 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
-    iter,
 };
 
 use syn::{visit::Visit, Ident};
@@ -70,54 +69,36 @@ impl PublicApi {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq)]
 pub(crate) struct ItemPath {
     path: Vec<Ident>,
-    last: Ident,
 }
 
 impl ItemPath {
-    fn new(path: Vec<Ident>, last: Ident) -> ItemPath {
-        ItemPath { last, path }
-    }
-
-    fn path_idents(&self) -> impl Iterator<Item = &Ident> {
-        self.path.iter().chain(iter::once(&self.last))
-    }
-
-    fn len(&self) -> usize {
-        self.path.len() + 1
+    fn new(mut path: Vec<Ident>, last: Ident) -> ItemPath {
+        path.push(last);
+        ItemPath { path }
     }
 }
 
 impl Display for ItemPath {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        self.path
-            .iter()
-            .try_for_each(|segment| write!(f, "{}::", segment))?;
+        if let Some(first) = self.path.first() {
+            write!(f, "{}", first)?;
 
-        write!(f, "{}", self.last)
+            self.path
+                .iter()
+                .skip(1)
+                .try_for_each(|segment| write!(f, "::{}", segment))?;
+        }
+
+        Ok(())
     }
 }
 
 impl PartialOrd for ItemPath {
     fn partial_cmp(&self, other: &ItemPath) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl Ord for ItemPath {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let idents = self.path_idents().zip(other.path_idents());
-
-        for (seg_a, seg_b) in idents {
-            let order = seg_a.cmp(seg_b);
-            if order != Ordering::Equal {
-                return order;
-            }
-        }
-
-        self.len().cmp(&other.len())
     }
 }
 
