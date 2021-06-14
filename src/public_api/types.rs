@@ -8,10 +8,12 @@ use syn::{
     Variant, Visibility,
 };
 
+use tap::Conv;
+
 #[cfg(test)]
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
-use super::{ItemKind, ItemPath};
+use super::{traits::TraitImpl, ItemKind, ItemPath};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TypeVisitor {
@@ -57,7 +59,9 @@ impl<'ast> Visit<'ast> for TypeVisitor {
         }
 
         let k = ItemPath::new(self.path.clone(), i.ident.clone());
-        let v = StructMetadata::new(i.generics.clone(), i.fields.clone()).into();
+        let v = StructMetadata::new(i.generics.clone(), i.fields.clone())
+            .conv::<TypeMetadata>()
+            .into();
 
         self.add_type(k, v);
     }
@@ -68,9 +72,78 @@ impl<'ast> Visit<'ast> for TypeVisitor {
         }
 
         let k = ItemPath::new(self.path.clone(), i.ident.clone());
-        let v = EnumMetadata::new(i.generics.clone(), i.variants.clone()).into();
+        let v = EnumMetadata::new(i.generics.clone(), i.variants.clone())
+            .conv::<TypeMetadata>()
+            .into();
 
         self.add_type(k, v);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TypeMetadata {
+    inner: InnerTypeMetadata,
+    traits: Vec<TraitImpl>,
+}
+
+impl TypeMetadata {
+    fn new(inner: InnerTypeMetadata) -> TypeMetadata {
+        TypeMetadata {
+            inner,
+            traits: Vec::new(),
+        }
+    }
+}
+
+impl From<StructMetadata> for TypeMetadata {
+    fn from(s: StructMetadata) -> TypeMetadata {
+        TypeMetadata::new(s.into())
+    }
+}
+
+impl From<EnumMetadata> for TypeMetadata {
+    fn from(e: EnumMetadata) -> Self {
+        TypeMetadata::new(e.into())
+    }
+}
+
+#[cfg(test)]
+impl Parse for TypeMetadata {
+    fn parse(input: ParseStream) -> ParseResult<TypeMetadata> {
+        Ok(TypeMetadata::new(input.parse()?))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum InnerTypeMetadata {
+    Struct(StructMetadata),
+    Enum(EnumMetadata),
+}
+
+impl From<StructMetadata> for InnerTypeMetadata {
+    fn from(v: StructMetadata) -> InnerTypeMetadata {
+        InnerTypeMetadata::Struct(v)
+    }
+}
+
+impl From<EnumMetadata> for InnerTypeMetadata {
+    fn from(v: EnumMetadata) -> InnerTypeMetadata {
+        InnerTypeMetadata::Enum(v)
+    }
+}
+
+#[cfg(test)]
+impl Parse for InnerTypeMetadata {
+    fn parse(input: ParseStream) -> ParseResult<InnerTypeMetadata> {
+        input
+            .parse::<StructMetadata>()
+            .map(Into::into)
+            .or_else(|mut e| {
+                input.parse::<EnumMetadata>().map(Into::into).map_err(|e_| {
+                    e.combine(e_);
+                    e
+                })
+            })
     }
 }
 

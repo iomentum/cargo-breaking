@@ -1,5 +1,6 @@
 mod functions;
 mod methods;
+mod traits;
 mod types;
 mod utils;
 
@@ -22,7 +23,7 @@ use crate::ast::CrateAst;
 use self::{
     functions::{FnPrototype, FnVisitor},
     methods::{MethodMetadata, MethodVisitor},
-    types::{EnumMetadata, StructMetadata, TypeVisitor},
+    types::{TypeMetadata, TypeVisitor},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -121,8 +122,7 @@ impl Parse for ItemPath {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ItemKind {
     Fn(FnPrototype),
-    Struct(StructMetadata),
-    Enum(EnumMetadata),
+    Type(TypeMetadata),
     Method(MethodMetadata),
 }
 
@@ -133,16 +133,7 @@ impl Parse for ItemKind {
             .parse::<FnPrototype>()
             .map(Into::into)
             .or_else(|mut e| {
-                input
-                    .parse::<StructMetadata>()
-                    .map(Into::into)
-                    .map_err(|e_| {
-                        e.combine(e_);
-                        e
-                    })
-            })
-            .or_else(|mut e| {
-                input.parse::<EnumMetadata>().map(Into::into).map_err(|e_| {
+                input.parse::<TypeMetadata>().map(Into::into).map_err(|e_| {
                     e.combine(e_);
                     e
                 })
@@ -165,15 +156,9 @@ impl From<FnPrototype> for ItemKind {
     }
 }
 
-impl From<StructMetadata> for ItemKind {
-    fn from(item: StructMetadata) -> Self {
-        ItemKind::Struct(item)
-    }
-}
-
-impl From<EnumMetadata> for ItemKind {
-    fn from(v: EnumMetadata) -> Self {
-        Self::Enum(v)
+impl From<TypeMetadata> for ItemKind {
+    fn from(item: TypeMetadata) -> Self {
+        ItemKind::Type(item)
     }
 }
 
