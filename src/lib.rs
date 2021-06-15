@@ -1,6 +1,7 @@
 mod ast;
 mod cli;
 mod comparator;
+mod diagnosis;
 mod git;
 mod glue;
 mod manifest;

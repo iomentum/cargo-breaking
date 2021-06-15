@@ -1,6 +1,6 @@
 mod functions;
 mod methods;
-mod traits;
+mod trait_impls;
 mod types;
 mod utils;
 
@@ -18,11 +18,15 @@ use syn::{
     Token,
 };
 
-use crate::ast::CrateAst;
+use crate::{
+    ast::CrateAst,
+    diagnosis::{DiagnosisItem, DiagnosticGenerator},
+};
 
 use self::{
     functions::{FnPrototype, FnVisitor},
     methods::{MethodMetadata, MethodVisitor},
+    trait_impls::TraitImplVisitor,
     types::{TypeMetadata, TypeVisitor},
 };
 
@@ -42,7 +46,10 @@ impl PublicApi {
         let mut fn_visitor = FnVisitor::new(method_visitor.items());
         fn_visitor.visit_file(program.ast());
 
-        let items = fn_visitor.items();
+        let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items());
+        trait_impl_visitor.visit_file(program.ast());
+
+        let items = trait_impl_visitor.items();
 
         PublicApi { items }
     }
@@ -126,6 +133,58 @@ pub(crate) enum ItemKind {
     Method(MethodMetadata),
 }
 
+impl ItemKind {
+    pub(crate) fn as_type_mut(&mut self) -> Option<&mut TypeMetadata> {
+        if let Self::Type(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+impl ItemKind {
+    fn as_type(&self) -> Option<&TypeMetadata> {
+        if let ItemKind::Type(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+impl DiagnosticGenerator for ItemKind {
+    fn removal_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
+        match self {
+            ItemKind::Fn(f) => f.removal_diagnosis(path),
+            ItemKind::Type(t) => t.removal_diagnosis(path),
+            ItemKind::Method(m) => m.removal_diagnosis(path),
+        }
+    }
+
+    fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
+        match (self, other) {
+            (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path),
+            (ItemKind::Type(ta), ItemKind::Type(tb)) => ta.modification_diagnosis(tb, path),
+            (ItemKind::Method(ma), ItemKind::Method(mb)) => ma.modification_diagnosis(mb, path),
+            (a, b) => {
+                let mut diags = a.removal_diagnosis(path);
+                diags.extend(b.addition_diagnosis(path));
+                diags
+            }
+        }
+    }
+
+    fn addition_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
+        match self {
+            ItemKind::Fn(f) => f.addition_diagnosis(path),
+            ItemKind::Type(t) => t.addition_diagnosis(path),
+            ItemKind::Method(m) => m.addition_diagnosis(path),
+        }
+    }
+}
+
 #[cfg(test)]
 impl Parse for ItemKind {
     fn parse(input: ParseStream) -> ParseResult<ItemKind> {
@@ -174,6 +233,8 @@ mod tests {
 
     mod public_api {
         use syn::parse_quote;
+
+        use crate::public_api::trait_impls::TraitImplMetadata;
 
         use super::*;
 
@@ -345,6 +406,26 @@ mod tests {
             let fn_key = parse_quote! { A::a };
             let left = public_api.items.get(&fn_key);
             let right = Some(&item);
+
+            assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_trait_implementation() {
+            let public_api: PublicApi = parse_quote! {
+                pub struct S;
+                impl T for S {}
+            };
+
+            assert_eq!(public_api.items.len(), 1);
+
+            let type_key = parse_quote! { S };
+            let type_value = public_api.items.get(&type_key).unwrap();
+
+            let trait_metadata: TraitImplMetadata = parse_quote! { impl T for S {} };
+
+            let left = &[trait_metadata];
+            let right = type_value.as_type().unwrap().traits();
 
             assert_eq!(left, right);
         }

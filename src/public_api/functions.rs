@@ -8,6 +8,8 @@ use syn::{
 #[cfg(test)]
 use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult};
 
+use crate::diagnosis::DiagnosticGenerator;
+
 use super::{ItemKind, ItemPath};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,6 +73,8 @@ impl FnPrototype {
         FnPrototype { sig }
     }
 }
+
+impl DiagnosticGenerator for FnPrototype {}
 
 #[cfg(test)]
 impl Parse for FnPrototype {

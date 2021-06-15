@@ -13,7 +13,10 @@ use syn::{
     Token,
 };
 
-use crate::public_api::{ItemKind, ItemPath, PublicApi};
+use crate::{
+    diagnosis::{DiagnosisItem, DiagnosticGenerator},
+    public_api::PublicApi,
+};
 
 pub struct ApiComparator {
     previous: PublicApi,
@@ -26,31 +29,27 @@ impl ApiComparator {
     }
 
     pub fn run(&self) -> ApiCompatibilityDiagnostics {
-        let mut removals: Vec<_> = self.item_removals().collect();
-        let mut modifications: Vec<_> = self.item_modifications().collect();
-        let mut additions: Vec<_> = self.item_additions().collect();
+        let mut diags: Vec<_> = self.item_removals().collect();
 
-        removals.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
-        modifications.sort_by(|(p1, _, _), (p2, _, _)| p1.cmp(p2));
-        additions.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
+        diags.extend(self.item_modifications());
+        diags.extend(self.item_additions());
 
-        ApiCompatibilityDiagnostics {
-            removals,
-            modifications,
-            additions,
-        }
+        ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind)> {
+    fn item_removals(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
         map_difference(self.previous.items(), self.current.items())
+            .flat_map(|(path, kind)| kind.removal_diagnosis(path))
     }
 
-    fn item_modifications(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind, &ItemKind)> {
+    fn item_modifications(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
         map_modifications(self.previous.items(), self.current.items())
+            .flat_map(|(path, kind_a, kind_b)| kind_a.modification_diagnosis(kind_b, path))
     }
 
-    fn item_additions(&self) -> impl Iterator<Item = (&ItemPath, &ItemKind)> {
+    fn item_additions(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
         map_difference(self.current.items(), self.previous.items())
+            .flat_map(|(path, kind)| kind.addition_diagnosis(path))
     }
 }
 
@@ -74,33 +73,21 @@ impl Parse for ApiComparator {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ApiCompatibilityDiagnostics<'a> {
-    removals: Vec<(&'a ItemPath, &'a ItemKind)>,
-    modifications: Vec<(&'a ItemPath, &'a ItemKind, &'a ItemKind)>,
-    additions: Vec<(&'a ItemPath, &'a ItemKind)>,
+pub struct ApiCompatibilityDiagnostics {
+    diags: Vec<DiagnosisItem>,
 }
 
-impl Display for ApiCompatibilityDiagnostics<'_> {
+impl Display for ApiCompatibilityDiagnostics {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        self.removals
+        self.diags
             .iter()
-            .try_for_each(|(path, _)| writeln!(f, "- {}", path))?;
-
-        self.modifications
-            .iter()
-            .try_for_each(|(path, _, _)| writeln!(f, "≠ {}", path))?;
-
-        self.additions
-            .iter()
-            .try_for_each(|(path, _)| writeln!(f, "+ {}", path))?;
-
-        Ok(())
+            .try_for_each(|diag| writeln!(f, "{}", diag))
     }
 }
 
-impl ApiCompatibilityDiagnostics<'_> {
+impl ApiCompatibilityDiagnostics {
     pub fn is_empty(&self) -> bool {
-        self.removals.is_empty() && self.modifications.is_empty() && self.additions.is_empty()
+        self.diags.is_empty()
     }
 
     pub(crate) fn guess_next_version(&self, mut v: Version) -> Version {
@@ -139,11 +126,13 @@ impl ApiCompatibilityDiagnostics<'_> {
     }
 
     fn contains_breaking_changes(&self) -> bool {
-        !self.removals.is_empty() || !self.modifications.is_empty()
+        self.diags
+            .iter()
+            .any(|diag| diag.is_removal() || diag.is_modification())
     }
 
     fn contains_additions(&self) -> bool {
-        !self.additions.is_empty()
+        self.diags.iter().any(|diag| diag.is_addition())
     }
 
     fn next_major(v: &mut Version) {
@@ -191,16 +180,16 @@ mod tests {
 
     use super::*;
 
-    fn item_path_1() -> ItemPath {
-        parse_quote! { foo::bar::baz }
+    fn addition_diagnosis() -> DiagnosisItem {
+        parse_quote! { + foo::bar::baz }
     }
 
-    fn item_kind_1() -> ItemKind {
-        parse_quote! { pub fn baz(n: usize) }
+    fn modification_diagnosis() -> DiagnosisItem {
+        parse_quote! { <> foo::bar::baz }
     }
 
-    fn item_kind_2() -> ItemKind {
-        parse_quote! { pub fn baz(n: u32) -> u32 }
+    fn removal_diagnosis() -> DiagnosisItem {
+        parse_quote! { - foo::bar::baz }
     }
 
     macro_rules! compatibility_diag {
@@ -211,10 +200,7 @@ mod tests {
         ($name:ident: removal) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
 
-            let tmp_1 = item_path_1();
-            let tmp_2 = item_kind_1();
-
-            $name.removals.push((&tmp_1, &tmp_2));
+            $name.diags.push(removal_diagnosis());
 
             let $name = $name;
         };
@@ -222,11 +208,7 @@ mod tests {
         ($name:ident: modification) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
 
-            let tmp_1 = item_path_1();
-            let tmp_2 = item_kind_1();
-            let tmp_3 = item_kind_2();
-
-            $name.modifications.push((&tmp_1, &tmp_2, &tmp_3));
+            $name.diags.push(modification_diagnosis());
 
             let $name = $name;
         };
@@ -234,10 +216,7 @@ mod tests {
         ($name:ident: addition) => {
             let mut $name = ApiCompatibilityDiagnostics::default();
 
-            let tmp_1 = item_path_1();
-            let tmp_2 = item_kind_1();
-
-            $name.additions.push((&tmp_1, &tmp_2));
+            $name.diags.push(addition_diagnosis());
 
             let $name = $name;
         };

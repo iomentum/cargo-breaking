@@ -13,7 +13,9 @@ use tap::Conv;
 #[cfg(test)]
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
-use super::{traits::TraitImpl, ItemKind, ItemPath};
+use crate::diagnosis::{DiagnosisItem, DiagnosticGenerator};
+
+use super::{trait_impls::TraitImplMetadata, ItemKind, ItemPath};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TypeVisitor {
@@ -83,7 +85,14 @@ impl<'ast> Visit<'ast> for TypeVisitor {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TypeMetadata {
     inner: InnerTypeMetadata,
-    traits: Vec<TraitImpl>,
+    traits: Vec<TraitImplMetadata>,
+}
+
+#[cfg(test)]
+impl TypeMetadata {
+    pub(crate) fn traits(&self) -> &[TraitImplMetadata] {
+        &self.traits
+    }
 }
 
 impl TypeMetadata {
@@ -92,6 +101,56 @@ impl TypeMetadata {
             inner,
             traits: Vec::new(),
         }
+    }
+
+    pub(crate) fn add_trait_impl(&mut self, impl_: TraitImplMetadata) {
+        self.traits.push(impl_);
+    }
+
+    fn find_trait(&self, name: &Ident) -> Option<&TraitImplMetadata> {
+        self.traits
+            .iter()
+            .find(|trait_| trait_.trait_name() == name)
+    }
+}
+
+impl DiagnosticGenerator for TypeMetadata {
+    fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
+        let mut diags = if self.inner != other.inner {
+            vec![DiagnosisItem::modification(path.clone(), None)]
+        } else {
+            Vec::new()
+        };
+
+        // TODO: replace these O(n²) zone with a faster implentation, perhaps by
+        // using an ordered list or a HashMap.
+
+        for trait_1 in self.traits.iter() {
+            match other.find_trait(trait_1.trait_name()) {
+                Some(trait_2) if trait_1 == trait_2 => {}
+
+                Some(_) => diags.push(DiagnosisItem::modification(
+                    path.clone(),
+                    Some(trait_1.trait_name().clone()),
+                )),
+
+                None => diags.push(DiagnosisItem::removal(
+                    path.clone(),
+                    Some(trait_1.trait_name().clone()),
+                )),
+            }
+        }
+
+        for trait_2 in other.traits.iter() {
+            if self.find_trait(trait_2.trait_name()).is_none() {
+                diags.push(DiagnosisItem::addition(
+                    path.clone(),
+                    Some(trait_2.trait_name().clone()),
+                ));
+            }
+        }
+
+        diags
     }
 }
 

@@ -12,6 +12,8 @@ use syn::{
     spanned::Spanned,
 };
 
+use crate::diagnosis::DiagnosticGenerator;
+
 use super::{utils, ItemKind, ItemPath};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -132,6 +134,8 @@ impl MethodMetadata {
         }
     }
 }
+
+impl DiagnosticGenerator for MethodMetadata {}
 
 #[cfg(test)]
 impl Parse for MethodMetadata {

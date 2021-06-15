@@ -1,4 +1,4 @@
-use syn::{AngleBracketedGenericArguments, Ident, Type, TypePath};
+use syn::{AngleBracketedGenericArguments, Ident, Path, Type, TypePath};
 
 pub(crate) fn extract_name_and_generic_args(
     ty: &Type,
@@ -9,8 +9,14 @@ pub(crate) fn extract_name_and_generic_args(
         _ => return None,
     };
 
-    let unique_segment = match path.segments.len() {
-        1 => path.segments.first().unwrap(),
+    extract_name_and_generic_args_from_path(path)
+}
+
+pub(crate) fn extract_name_and_generic_args_from_path(
+    p: &Path,
+) -> Option<(&Ident, Option<&AngleBracketedGenericArguments>)> {
+    let unique_segment = match p.segments.len() {
+        1 => p.segments.first().unwrap(),
         // TODO: handle paths with more than one segment in them
         _ => return None,
     };
