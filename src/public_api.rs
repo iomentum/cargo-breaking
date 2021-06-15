@@ -5,7 +5,6 @@ mod types;
 mod utils;
 
 use std::{
-    cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
 };
@@ -77,7 +76,7 @@ impl PublicApi {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ItemPath {
     path: Vec<Ident>,
 }
@@ -104,17 +103,12 @@ impl Display for ItemPath {
     }
 }
 
-impl PartialOrd for ItemPath {
-    fn partial_cmp(&self, other: &ItemPath) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 #[cfg(test)]
 impl Parse for ItemPath {
     fn parse(input: ParseStream) -> ParseResult<ItemPath> {
-        let mut path = Vec::new();
-        path.push(input.parse::<Ident>()?);
+        let first_ident = input.parse::<Ident>()?;
+
+        let mut path = vec![first_ident];
 
         while input.peek(Token![::]) {
             input.parse::<Token![::]>().unwrap();

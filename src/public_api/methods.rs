@@ -60,7 +60,7 @@ impl<'ast> Visit<'ast> for MethodVisitor {
 
         let (type_name, generic_args) =
             match utils::extract_name_and_generic_args(impl_.self_ty.as_ref()) {
-                Some((name, generic_args)) => ((name.clone(), generic_args.cloned())),
+                Some((name, generic_args)) => (name.clone(), generic_args.cloned()),
                 // TODO: handle non-trivial paths
                 None => return,
             };
