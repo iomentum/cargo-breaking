@@ -17,7 +17,7 @@ $ cargo breaking
 - user::User::from_str
 ≠ user::User
 + user::User::from_path
-+ user::User: impl Debug for User
++ user::User: Debug
 
 Next version is: 3.0.0
 ```
