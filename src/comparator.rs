@@ -227,7 +227,6 @@ mod tests {
 
         #[test]
         fn removal() {
-            // let comparator = ApiComparator::from_strs(FUNCTION_1, EMPTY_FILE);
             let comparator: ApiComparator = parse_quote! {
                 {
                     mod foo {
