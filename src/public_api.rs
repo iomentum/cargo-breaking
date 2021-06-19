@@ -1,4 +1,5 @@
 mod functions;
+mod imports;
 mod methods;
 mod trait_impls;
 mod types;
@@ -24,6 +25,7 @@ use crate::{
 
 use self::{
     functions::{FnPrototype, FnVisitor},
+    imports::PathResolver,
     methods::{MethodMetadata, MethodVisitor},
     trait_impls::TraitImplVisitor,
     types::{TypeMetadata, TypeVisitor},
@@ -36,6 +38,8 @@ pub(crate) struct PublicApi {
 
 impl PublicApi {
     pub(crate) fn from_ast(program: &CrateAst) -> PublicApi {
+        let _resolver = PathResolver::new(program);
+
         let mut type_visitor = TypeVisitor::new();
         type_visitor.visit_file(program.ast());
 
