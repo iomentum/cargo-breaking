@@ -54,7 +54,6 @@ impl<'ast> Visit<'ast> for MethodVisitor {
         // TODO: filter out types that are not public.
 
         if impl_.trait_.is_some() {
-            // TODO: add another pass that finds trait implementations.
             return;
         }
 
