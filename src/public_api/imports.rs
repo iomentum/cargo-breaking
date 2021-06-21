@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use syn::{
     visit::{self, Visit},
-    Ident, ItemFn, ItemMod, Path, Visibility,
+    Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, Path, Visibility,
 };
 
 #[cfg(test)]
@@ -107,6 +107,24 @@ impl<'a, 'ast> Visit<'ast> for ExportedItemsVisitor<'ast> {
         let fn_path = self.create_full_path(i.sig.ident.clone());
         self.items.insert(fn_path);
     }
+
+    fn visit_item_struct(&mut self, i: &'ast ItemStruct) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
+        let struct_path = self.create_full_path(i.ident.clone());
+        self.items.insert(struct_path);
+    }
+
+    fn visit_item_enum(&mut self, i: &'ast ItemEnum) {
+        if !matches!(i.vis, Visibility::Public(_)) {
+            return;
+        }
+
+        let enum_path = self.create_full_path(i.ident.clone());
+        self.items.insert(enum_path);
+    }
 }
 
 #[cfg(test)]
@@ -116,7 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adds_function_on_root() {
+    fn adds_function_on_root_1() {
         let resolver: PathResolver = parse_quote! {
             pub fn a() {}
         };
@@ -128,6 +146,22 @@ mod tests {
 
         let left = resolver.resolve(&path, &item_to_resolve);
         let right = Some(&tmp as &[_]);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn adds_function_on_root_2() {
+        let resolver: PathResolver = parse_quote! {
+            pub mod a {
+                pub fn f() {}
+            }
+        };
+
+        let tmp = [parse_quote! { a }, parse_quote! { f }];
+
+        let left = resolver.resolve(&[], &parse_quote! { a::f });
+        let right = Some(&tmp as _);
 
         assert_eq!(left, right);
     }
@@ -163,6 +197,34 @@ mod tests {
         let tmp = [parse_quote! { a }];
 
         let left = resolver.resolve(&path, &item_to_resolve);
+        let right = Some(&tmp as &[_]);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn adds_struct() {
+        let resolver: PathResolver = parse_quote! {
+            pub struct S;
+        };
+
+        let tmp = [parse_quote! { S }];
+
+        let left = resolver.resolve(&[], &parse_quote! { S });
+        let right = Some(&tmp as &[_]);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn adds_enum() {
+        let resolver: PathResolver = parse_quote! {
+            pub enum E {}
+        };
+
+        let tmp = [parse_quote! { E }];
+
+        let left = resolver.resolve(&[], &parse_quote! { E });
         let right = Some(&tmp as &[_]);
 
         assert_eq!(left, right);
