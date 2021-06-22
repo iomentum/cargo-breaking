@@ -14,18 +14,29 @@ use crate::{
     public_api::utils,
 };
 
-use super::{ItemKind, ItemPath};
+#[cfg(test)]
+use crate::ast::CrateAst;
+
+use super::{imports::PathResolver, ItemKind, ItemPath};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TraitImplVisitor {
+pub(crate) struct TraitImplVisitor<'a> {
     items: HashMap<ItemPath, ItemKind>,
     path: Vec<Ident>,
+    resolver: &'a PathResolver,
 }
 
-impl TraitImplVisitor {
-    pub(crate) fn new(items: HashMap<ItemPath, ItemKind>) -> TraitImplVisitor {
+impl<'a> TraitImplVisitor<'a> {
+    pub(crate) fn new(
+        items: HashMap<ItemPath, ItemKind>,
+        resolver: &'a PathResolver,
+    ) -> TraitImplVisitor<'a> {
         let path = Vec::new();
-        TraitImplVisitor { items, path }
+        TraitImplVisitor {
+            items,
+            path,
+            resolver,
+        }
     }
 
     pub(crate) fn items(self) -> HashMap<ItemPath, ItemKind> {
@@ -52,7 +63,7 @@ impl TraitImplVisitor {
     }
 }
 
-impl<'ast> Visit<'ast> for TraitImplVisitor {
+impl<'a, 'ast> Visit<'ast> for TraitImplVisitor<'a> {
     fn visit_item_mod(&mut self, mod_: &'ast ItemMod) {
         self.add_path_segment(mod_.ident.clone());
         visit::visit_item_mod(self, mod_);
@@ -60,19 +71,24 @@ impl<'ast> Visit<'ast> for TraitImplVisitor {
     }
 
     fn visit_item_impl(&mut self, impl_: &'ast ItemImpl) {
-        let (type_name, trait_impl_metadata) = match extract_impl_trait_metadata(impl_) {
-            Some(value) => value,
-            None => return,
-        };
+        let (type_name, trait_impl_metadata) =
+            match extract_impl_trait_metadata(impl_, &self.resolver, self.path.as_slice()) {
+                Some(value) => value,
+                None => return,
+            };
 
         self.add_trait_impl(
-            &ItemPath::new(self.path.clone(), type_name),
+            &ItemPath::concat_both(self.path.clone(), type_name.to_owned()),
             trait_impl_metadata,
         );
     }
 }
 
-fn extract_impl_trait_metadata(impl_: &ItemImpl) -> Option<(Ident, TraitImplMetadata)> {
+fn extract_impl_trait_metadata<'a>(
+    impl_: &ItemImpl,
+    resolver: &'a PathResolver,
+    current_path: &[Ident],
+) -> Option<(&'a [Ident], TraitImplMetadata)> {
     let trait_path = match &impl_.trait_ {
         Some((_, trait_path, _)) => trait_path,
         None => return None,
@@ -84,10 +100,10 @@ fn extract_impl_trait_metadata(impl_: &ItemImpl) -> Option<(Ident, TraitImplMeta
     let trait_name = trait_name.clone();
     let trait_generic_args = trait_generic_args.cloned();
 
-    let (type_name, type_generic_args) =
+    let (type_path, type_generic_args) =
         utils::extract_name_and_generic_args(impl_.self_ty.as_ref())?;
 
-    let type_name = type_name.clone();
+    let resolved_path = resolver.resolve(current_path, type_path)?;
     let type_generic_args = type_generic_args.cloned();
 
     let mut consts = Vec::new();
@@ -112,7 +128,7 @@ fn extract_impl_trait_metadata(impl_: &ItemImpl) -> Option<(Ident, TraitImplMeta
         types,
     };
 
-    Some((type_name, trait_impl_metadata))
+    Some((resolved_path, trait_impl_metadata))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -158,9 +174,12 @@ impl DiagnosticGenerator for TraitImplMetadata {
 #[cfg(test)]
 impl Parse for TraitImplMetadata {
     fn parse(input: ParseStream) -> ParseResult<TraitImplMetadata> {
-        let impl_ = input.parse::<ItemImpl>()?;
+        let impl_ = input.fork().parse::<ItemImpl>()?;
+        let ast = input.parse::<CrateAst>()?;
 
-        match extract_impl_trait_metadata(&impl_) {
+        let resolver = PathResolver::new(&ast);
+
+        match extract_impl_trait_metadata(&impl_, &resolver, &[]) {
             Some((_, metadata)) => Ok(metadata),
             None => Err(input.error("Failed to parse trait implementation metadata")),
         }

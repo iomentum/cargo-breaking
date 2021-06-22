@@ -18,6 +18,8 @@ use syn::{
     Token,
 };
 
+use tap::Tap;
+
 use crate::{
     ast::CrateAst,
     diagnosis::{DiagnosisItem, DiagnosticGenerator},
@@ -38,18 +40,18 @@ pub(crate) struct PublicApi {
 
 impl PublicApi {
     pub(crate) fn from_ast(program: &CrateAst) -> PublicApi {
-        let _resolver = PathResolver::new(program);
+        let resolver = PathResolver::new(program);
 
         let mut type_visitor = TypeVisitor::new();
         type_visitor.visit_file(program.ast());
 
-        let mut method_visitor = MethodVisitor::new(type_visitor.types());
+        let mut method_visitor = MethodVisitor::new(type_visitor.types(), &resolver);
         method_visitor.visit_file(program.ast());
 
         let mut fn_visitor = FnVisitor::new(method_visitor.items());
         fn_visitor.visit_file(program.ast());
 
-        let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items());
+        let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items(), &resolver);
         trait_impl_visitor.visit_file(program.ast());
 
         let items = trait_impl_visitor.items();
@@ -70,16 +72,6 @@ impl Parse for PublicApi {
     }
 }
 
-#[cfg(test)]
-impl PublicApi {
-    pub(crate) fn from_str(s: &str) -> PublicApi {
-        use std::str::FromStr;
-
-        let ast = CrateAst::from_str(s).unwrap();
-        PublicApi::from_ast(&ast)
-    }
-}
-
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ItemPath {
     path: Vec<Ident>,
@@ -88,6 +80,11 @@ pub(crate) struct ItemPath {
 impl ItemPath {
     fn new(mut path: Vec<Ident>, last: Ident) -> ItemPath {
         path.push(last);
+        ItemPath { path }
+    }
+
+    fn concat_both(left: Vec<Ident>, right: Vec<Ident>) -> ItemPath {
+        let path = left.tap_mut(|v| v.extend(right));
         ItemPath { path }
     }
 }
@@ -238,7 +235,9 @@ mod tests {
 
         #[test]
         fn adds_functions() {
-            let public_api = PublicApi::from_str("pub fn fact(n: u32) -> u32 {}");
+            let public_api: PublicApi = parse_quote! {
+                pub fn fact(n: u32) -> u32 {}
+            };
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -255,7 +254,7 @@ mod tests {
 
         #[test]
         fn adds_structure() {
-            let public_api = PublicApi::from_str("pub struct A;");
+            let public_api: PublicApi = parse_quote! { pub struct A; };
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -270,7 +269,7 @@ mod tests {
 
         #[test]
         fn adds_enum() {
-            let public_api = PublicApi::from_str("pub enum B {}");
+            let public_api: PublicApi = parse_quote! { pub enum B {} };
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -285,7 +284,7 @@ mod tests {
 
         #[test]
         fn filters_private_named_struct_fields() {
-            let public_api = PublicApi::from_str("pub struct A { a: u8, pub b: u8 }");
+            let public_api: PublicApi = parse_quote! { pub struct A { a: u8, pub b: u8 } };
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -304,7 +303,7 @@ mod tests {
 
         #[test]
         fn filters_private_unnamed_struct_fields() {
-            let public_api = PublicApi::from_str("pub struct A(u8, pub u8);");
+            let public_api: PublicApi = parse_quote! { pub struct A(u8, pub u8); };
 
             assert_eq!(public_api.items.len(), 1);
 
@@ -388,7 +387,13 @@ mod tests {
 
         #[test]
         fn adds_associated_function() {
-            let public_api = PublicApi::from_str("pub struct A; impl A { pub fn a() {} }");
+            let public_api: PublicApi = parse_quote! {
+                pub struct A;
+
+                impl A {
+                    pub fn a() {}
+                }
+            };
 
             assert_eq!(public_api.items.len(), 2);
 
@@ -420,7 +425,10 @@ mod tests {
             let type_key = parse_quote! { S };
             let type_value = public_api.items.get(&type_key).unwrap();
 
-            let trait_metadata: TraitImplMetadata = parse_quote! { impl T for S {} };
+            let trait_metadata: TraitImplMetadata = parse_quote! {
+                impl T for S {}
+                pub struct S;
+            };
 
             let left = &[trait_metadata];
             let right = type_value.as_type().unwrap().traits();

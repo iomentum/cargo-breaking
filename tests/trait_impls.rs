@@ -66,3 +66,11 @@ fn impl_trait_order_is_not_tracked() {
 
     assert!(diff.is_empty());
 }
+
+#[test]
+fn not_reported_when_type_is_not_public() {
+    let comparator = cargo_breaking::compare("struct S; impl T for S {}", "struct S;").unwrap();
+    let diff = comparator.run();
+
+    assert!(diff.is_empty());
+}

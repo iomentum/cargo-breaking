@@ -1,15 +1,23 @@
-use syn::{AngleBracketedGenericArguments, Ident, Path, Type, TypePath};
+use syn::{AngleBracketedGenericArguments, Ident, Path, PathArguments, Type, TypePath};
 
 pub(crate) fn extract_name_and_generic_args(
     ty: &Type,
-) -> Option<(&Ident, Option<&AngleBracketedGenericArguments>)> {
+) -> Option<(&Path, Option<&AngleBracketedGenericArguments>)> {
     let path = match ty {
         Type::Path(TypePath { path, .. }) => path,
         // TODO: handle non-path types
         _ => return None,
     };
 
-    extract_name_and_generic_args_from_path(path)
+    Some((path, extract_ending_generics(path)))
+}
+
+fn extract_ending_generics(path: &Path) -> Option<&AngleBracketedGenericArguments> {
+    let last_argument = path.segments.last().map(|segment| &segment.arguments)?;
+    match last_argument {
+        PathArguments::AngleBracketed(args) => Some(args),
+        _ => None,
+    }
 }
 
 pub(crate) fn extract_name_and_generic_args_from_path(

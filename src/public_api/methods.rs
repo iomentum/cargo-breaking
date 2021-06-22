@@ -14,20 +14,28 @@ use syn::{
 
 use crate::diagnosis::DiagnosticGenerator;
 
-use super::{utils, ItemKind, ItemPath};
+use super::{imports::PathResolver, utils, ItemKind, ItemPath};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct MethodVisitor {
+pub(crate) struct MethodVisitor<'a> {
     items: HashMap<ItemPath, ItemKind>,
     path: Vec<Ident>,
+    resolver: &'a PathResolver,
 }
 
-impl MethodVisitor {
-    pub(crate) fn new(types: HashMap<ItemPath, ItemKind>) -> MethodVisitor {
+impl<'a> MethodVisitor<'a> {
+    pub(crate) fn new(
+        types: HashMap<ItemPath, ItemKind>,
+        resolver: &'a PathResolver,
+    ) -> MethodVisitor<'a> {
         let items = types;
         let path = Vec::new();
 
-        MethodVisitor { items, path }
+        MethodVisitor {
+            items,
+            path,
+            resolver,
+        }
     }
 
     pub(crate) fn items(self) -> HashMap<ItemPath, ItemKind> {
@@ -43,7 +51,7 @@ impl MethodVisitor {
     }
 }
 
-impl<'ast> Visit<'ast> for MethodVisitor {
+impl<'a, 'ast> Visit<'ast> for MethodVisitor<'a> {
     fn visit_item_mod(&mut self, mod_: &'ast ItemMod) {
         self.add_path_segment(mod_.ident.clone());
         visit::visit_item_mod(self, mod_);
@@ -57,26 +65,27 @@ impl<'ast> Visit<'ast> for MethodVisitor {
             return;
         }
 
-        let (type_name, generic_args) =
+        let (type_path, generic_args) =
             match utils::extract_name_and_generic_args(impl_.self_ty.as_ref()) {
-                Some((name, generic_args)) => (name.clone(), generic_args.cloned()),
+                Some((name, generic_args)) => (name, generic_args.cloned()),
                 // TODO: handle non-trivial paths
                 None => return,
             };
 
-        let generic_params = &impl_.generics;
+        let resolved_type_path = match self.resolver.resolve(self.path.as_slice(), type_path) {
+            Some(resolved) => resolved,
+            None => return,
+        };
 
-        self.add_path_segment(type_name);
+        let generic_params = &impl_.generics;
 
         let mut impl_block_visitor = ImplBlockVisitor {
             items: &mut self.items,
-            path: self.path.as_slice(),
+            path: resolved_type_path,
             parent_generic_params: generic_params,
             parent_generic_args: &generic_args,
         };
         impl_block_visitor.visit_item_impl(impl_);
-
-        self.remove_path_segment();
     }
 }
 

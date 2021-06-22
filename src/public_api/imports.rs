@@ -11,6 +11,7 @@ use tap::Tap;
 
 use crate::ast::CrateAst;
 
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PathResolver {
     // Note: we store only public items.
     items: HashSet<Vec<Ident>>,
@@ -51,6 +52,7 @@ impl Parse for PathResolver {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum UseVisibility {
     Private,
     PubCrate,

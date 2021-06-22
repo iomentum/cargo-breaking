@@ -63,3 +63,24 @@ fn generic_arg_change_is_modification() {
 
     assert_eq!(diff.to_string(), "≠ A::f\n");
 }
+
+#[test]
+fn not_reported_when_type_is_not_public() {
+    let comparator =
+        cargo_breaking::compare("struct A; impl A {}", "struct A; impl A { fn f() {} }").unwrap();
+    let diff = comparator.run();
+
+    assert!(diff.is_empty());
+}
+
+#[test]
+fn is_reported_in_type_definition_path() {
+    let comparator = cargo_breaking::compare(
+        "pub mod foo { pub struct Bar; } impl foo::Bar { pub fn f() {} }",
+        "pub mod foo { pub struct Bar; }",
+    )
+    .unwrap();
+    let diff = comparator.run();
+
+    assert_eq!(diff.to_string(), "- foo::Bar::f\n");
+}
