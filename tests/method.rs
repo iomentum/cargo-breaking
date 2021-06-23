@@ -74,12 +74,25 @@ fn not_reported_when_type_is_not_public() {
 }
 
 #[test]
-fn is_reported_in_type_definition_path() {
+fn is_reported_in_type_definition_path_1() {
     let comparator = cargo_breaking::compare(
         "pub mod foo { pub struct Bar; } impl foo::Bar { pub fn f() {} }",
         "pub mod foo { pub struct Bar; }",
     )
     .unwrap();
+    let diff = comparator.run();
+
+    assert_eq!(diff.to_string(), "- foo::Bar::f\n");
+}
+
+#[test]
+fn is_reported_in_type_definition_path_2() {
+    let comparator = cargo_breaking::compare(
+        "pub mod foo { pub struct Bar; } pub mod baz { impl crate::foo::Bar { pub fn f() {} } }",
+        "pub mod foo { pub struct Bar; }",
+    )
+    .unwrap();
+
     let diff = comparator.run();
 
     assert_eq!(diff.to_string(), "- foo::Bar::f\n");

@@ -33,9 +33,19 @@ impl PathResolver {
     }
 
     pub(crate) fn resolve(&self, current_path: &[Ident], item_path: &Path) -> Option<&[Ident]> {
-        let item_idents = item_path.segments.iter().map(|segment| &segment.ident);
+        let mut item_idents = item_path
+            .segments
+            .iter()
+            .map(|segment| &segment.ident)
+            .peekable();
 
-        let full_path = current_path
+        let from_current_path = if item_idents.next_if_eq(&"crate").is_some() {
+            &[]
+        } else {
+            current_path
+        };
+
+        let full_path = from_current_path
             .iter()
             .chain(item_idents)
             .cloned()
@@ -228,6 +238,22 @@ mod tests {
 
         let left = resolver.resolve(&[], &parse_quote! { E });
         let right = Some(&tmp as &[_]);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn resolves_when_starts_with_crate() {
+        let resolver: PathResolver = parse_quote! {
+            pub mod foo {
+                pub fn bar() {}
+            }
+        };
+
+        let tmp = [parse_quote! { foo }, parse_quote! { bar }];
+
+        let left = resolver.resolve(&[], &parse_quote! { crate::foo::bar });
+        let right = Some(&tmp as _);
 
         assert_eq!(left, right);
     }
