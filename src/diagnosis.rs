@@ -24,7 +24,7 @@ pub(crate) trait DiagnosticGenerator {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
     path: ItemPath,

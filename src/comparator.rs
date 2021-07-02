@@ -34,6 +34,8 @@ impl ApiComparator {
         diags.extend(self.item_modifications());
         diags.extend(self.item_additions());
 
+        diags.sort();
+
         ApiCompatibilityDiagnostics { diags }
     }
 
