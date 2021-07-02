@@ -1,6 +1,7 @@
 mod functions;
 mod imports;
 mod methods;
+mod trait_defs;
 mod trait_impls;
 mod types;
 mod utils;
@@ -29,6 +30,7 @@ use self::{
     functions::{FnPrototype, FnVisitor},
     imports::PathResolver,
     methods::{MethodMetadata, MethodVisitor},
+    trait_defs::{TraitDefMetadata, TraitDefVisitor},
     trait_impls::TraitImplVisitor,
     types::{TypeMetadata, TypeVisitor},
 };
@@ -54,7 +56,10 @@ impl PublicApi {
         let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items(), &resolver);
         trait_impl_visitor.visit_file(program.ast());
 
-        let items = trait_impl_visitor.items();
+        let mut trait_def_visitor = TraitDefVisitor::new(trait_impl_visitor.items(), &resolver);
+        trait_def_visitor.visit_file(program.ast());
+
+        let items = trait_def_visitor.items();
 
         PublicApi { items }
     }
@@ -86,6 +91,10 @@ impl ItemPath {
     fn concat_both(left: Vec<Ident>, right: Vec<Ident>) -> ItemPath {
         let path = left.tap_mut(|v| v.extend(right));
         ItemPath { path }
+    }
+
+    fn extend(initial: ItemPath, last: Ident) -> ItemPath {
+        initial.tap_mut(|initial| initial.path.push(last))
     }
 }
 
@@ -126,6 +135,7 @@ pub(crate) enum ItemKind {
     Fn(FnPrototype),
     Type(TypeMetadata),
     Method(MethodMetadata),
+    TraitDef(TraitDefMetadata),
 }
 
 impl ItemKind {
@@ -155,6 +165,7 @@ impl DiagnosticGenerator for ItemKind {
             ItemKind::Fn(f) => f.removal_diagnosis(path),
             ItemKind::Type(t) => t.removal_diagnosis(path),
             ItemKind::Method(m) => m.removal_diagnosis(path),
+            ItemKind::TraitDef(t) => t.removal_diagnosis(path),
         }
     }
 
@@ -163,6 +174,7 @@ impl DiagnosticGenerator for ItemKind {
             (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path),
             (ItemKind::Type(ta), ItemKind::Type(tb)) => ta.modification_diagnosis(tb, path),
             (ItemKind::Method(ma), ItemKind::Method(mb)) => ma.modification_diagnosis(mb, path),
+            (ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => ta.modification_diagnosis(tb, path),
             (a, b) => {
                 let mut diags = a.removal_diagnosis(path);
                 diags.extend(b.addition_diagnosis(path));
@@ -176,6 +188,7 @@ impl DiagnosticGenerator for ItemKind {
             ItemKind::Fn(f) => f.addition_diagnosis(path),
             ItemKind::Type(t) => t.addition_diagnosis(path),
             ItemKind::Method(m) => m.addition_diagnosis(path),
+            ItemKind::TraitDef(t) => t.addition_diagnosis(path),
         }
     }
 }
