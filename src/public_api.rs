@@ -214,6 +214,15 @@ impl Parse for ItemKind {
                         e
                     })
             })
+            .or_else(|mut e| {
+                input
+                    .parse::<TraitDefMetadata>()
+                    .map(Into::into)
+                    .map_err(|e_| {
+                        e.combine(e_);
+                        e
+                    })
+            })
     }
 }
 
@@ -447,6 +456,53 @@ mod tests {
             let right = type_value.as_type().unwrap().traits();
 
             assert_eq!(left, right);
+        }
+
+        #[test]
+        fn adds_trait_definition() {
+            let public_api: PublicApi = parse_quote! {
+                pub trait T {}
+            };
+
+            assert_eq!(public_api.items.len(), 1);
+
+            let trait_key = parse_quote! { T };
+            let left = public_api.items.get(&trait_key).unwrap();
+
+            let right = parse_quote! {
+                pub trait T {}
+            };
+
+            assert_eq!(left, &right);
+        }
+
+        #[test]
+        fn filters_non_public_trait_definition() {
+            let public_api: PublicApi = parse_quote! {
+                trait T {}
+            };
+
+            assert!(public_api.items.is_empty());
+        }
+
+        #[test]
+        fn filters_public_test_in_non_public_module() {
+            let public_api: PublicApi = parse_quote! {
+                mod m {
+                    pub trait T {}
+                }
+            };
+
+            assert!(public_api.items.is_empty());
+        }
+
+        #[test]
+        #[should_panic(expected = "Duplicate item definition")]
+        fn panics_on_redefinition_3() {
+            let _: PublicApi = parse_quote! {
+                pub trait T {}
+                pub trait T {}
+            };
         }
     }
 }

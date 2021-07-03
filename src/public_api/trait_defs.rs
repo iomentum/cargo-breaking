@@ -8,6 +8,9 @@ use syn::{
     TypeParamBound, Visibility,
 };
 
+#[cfg(test)]
+use syn::parse::{Parse, ParseStream, Result as ParseResult};
+
 use crate::diagnosis::{DiagnosisItem, DiagnosticGenerator};
 
 use super::{imports::PathResolver, ItemKind, ItemPath};
@@ -132,6 +135,15 @@ impl DiagnosticGenerator for TraitDefMetadata {
         );
 
         diags
+    }
+}
+
+#[cfg(test)]
+impl Parse for TraitDefMetadata {
+    fn parse(input: ParseStream) -> ParseResult<TraitDefMetadata> {
+        input
+            .parse()
+            .map(|trait_def| extract_def_trait_metadata(&trait_def))
     }
 }
 
