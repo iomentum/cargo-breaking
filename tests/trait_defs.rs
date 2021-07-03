@@ -41,7 +41,7 @@ fn trait_item_kind_modification() {
     let comparator = compare("pub trait A { type B; }", "pub trait A { const B: usize; }").unwrap();
     let diff = comparator.run();
 
-    assert_eq!(diff.to_string(), "≠ A::B\n");
+    assert_eq!(diff.to_string(), "- A::B\n+ A::B\n");
 }
 
 #[test]

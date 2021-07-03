@@ -68,12 +68,22 @@ impl<'a, 'ast> Visit<'ast> for TraitDefVisitor<'a> {
 fn extract_def_trait_metadata(i: &ItemTrait) -> TraitDefMetadata {
     let generics = i.generics.clone();
     let supertraits = i.supertraits.clone();
-    let items = i.items.iter().cloned().collect();
+
+    let (mut consts, mut methods, mut types) = (Vec::new(), Vec::new(), Vec::new());
+
+    i.items.iter().for_each(|item| match item {
+        TraitItem::Const(c) => consts.push(c.clone()),
+        TraitItem::Method(m) => methods.push(m.clone()),
+        TraitItem::Type(t) => types.push(t.clone()),
+        other => panic!("Found unexcepted trait item: `{:?}`", other),
+    });
 
     TraitDefMetadata {
         generics,
         supertraits,
-        items,
+        consts,
+        methods,
+        types,
     }
 }
 
@@ -81,7 +91,9 @@ fn extract_def_trait_metadata(i: &ItemTrait) -> TraitDefMetadata {
 pub(crate) struct TraitDefMetadata {
     generics: Generics,
     supertraits: Punctuated<TypeParamBound, Add>,
-    items: Vec<TraitItem>,
+    consts: Vec<TraitItemConst>,
+    methods: Vec<TraitItemMethod>,
+    types: Vec<TraitItemType>,
 }
 
 impl Into<ItemKind> for TraitDefMetadata {
@@ -92,40 +104,73 @@ impl Into<ItemKind> for TraitDefMetadata {
 
 impl DiagnosticGenerator for TraitDefMetadata {
     fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        let mut diagnosis = Vec::new();
+        let mut diags = Vec::new();
 
         if self.generics != other.generics || self.supertraits != other.supertraits {
-            diagnosis.push(DiagnosisItem::modification(path.clone(), None));
+            diags.push(DiagnosisItem::modification(path.clone(), None));
         }
 
-        for item_1 in self.items.iter() {
-            let item_1_name = item_1.name();
+        diagnosis_for_nameable(
+            self.consts.as_slice(),
+            other.consts.as_slice(),
+            path,
+            &mut diags,
+        );
 
-            match TraitItem::find_named(other.items.as_slice(), item_1_name) {
-                Some(item_2) if item_1 == item_2 => {}
+        diagnosis_for_nameable(
+            self.methods.as_slice(),
+            other.methods.as_slice(),
+            path,
+            &mut diags,
+        );
 
-                Some(_) => {
-                    let path = ItemPath::extend(path.clone(), item_1_name.clone());
-                    diagnosis.push(DiagnosisItem::modification(path, None));
-                }
+        diagnosis_for_nameable(
+            self.types.as_slice(),
+            other.types.as_slice(),
+            path,
+            &mut diags,
+        );
 
-                None => {
-                    let path = ItemPath::extend(path.clone(), item_1_name.clone());
-                    diagnosis.push(DiagnosisItem::removal(path, None));
-                }
+        diags
+    }
+}
+
+fn diagnosis_for_nameable<Item>(
+    left: &[Item],
+    right: &[Item],
+    path: &ItemPath,
+    diags: &mut Vec<DiagnosisItem>,
+) where
+    Item: Nameable + PartialEq,
+{
+    for left_item in left {
+        let left_item_name = left_item.name();
+
+        match Item::find_named(right, left_item_name) {
+            Some(right_item) if left_item == right_item => {}
+
+            altered => {
+                let path = ItemPath::extend(path.clone(), left_item_name.clone());
+                let diagnostic_creator = if altered.is_some() {
+                    DiagnosisItem::modification
+                } else {
+                    DiagnosisItem::removal
+                };
+
+                let diagnosis = diagnostic_creator(path, None);
+                diags.push(diagnosis);
             }
         }
+    }
 
-        for item_2 in other.items.iter() {
-            let item_2_name = item_2.name();
+    for right_item in right {
+        let right_item_name = right_item.name();
 
-            if TraitItem::find_named(self.items.as_slice(), item_2_name).is_none() {
-                let path = ItemPath::extend(path.clone(), item_2_name.clone());
-                diagnosis.push(DiagnosisItem::addition(path, None));
-            }
+        if Item::find_named(left, right_item_name).is_none() {
+            let path = ItemPath::extend(path.clone(), right_item_name.clone());
+            let diagnosis = DiagnosisItem::addition(path, None);
+            diags.push(diagnosis)
         }
-
-        diagnosis
     }
 }
 
