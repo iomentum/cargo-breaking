@@ -19,7 +19,7 @@ use crate::ast::CrateAst;
 pub(crate) struct PathResolver {
     // Note: we store only public items.
     items: HashSet<Vec<Ident>>,
-    uses: HashMap<Vec<Ident>, Vec<(Vec<Ident>, UseVisibility)>>,
+    uses: HashMap<Vec<Ident>, Vec<(Import, UseVisibility)>>,
 }
 
 impl PathResolver {
@@ -77,11 +77,9 @@ impl PathResolver {
 
         // No path can be empty. As such, the following call to unwrap is
         // correct.
-        imports_in_module.iter().find_map(|(import, _)| {
-            item_path
-                .next_if_eq(&import.last().unwrap())
-                .map(|_| import.as_slice())
-        })
+        imports_in_module
+            .iter()
+            .find_map(|(import, _)| item_path.next_if_eq(&import.name()).map(|_| import.path()))
     }
 }
 
@@ -101,7 +99,7 @@ enum UseVisibility {
 
 struct ExportedItemsVisitor<'a> {
     items: &'a mut HashSet<Vec<Ident>>,
-    uses: &'a mut HashMap<Vec<Ident>, Vec<(Vec<Ident>, UseVisibility)>>,
+    uses: &'a mut HashMap<Vec<Ident>, Vec<(Import, UseVisibility)>>,
     path: Vec<Ident>,
 }
 
@@ -126,7 +124,7 @@ impl<'a> ExportedItemsVisitor<'a> {
         self.path.clone().tap_mut(|p| p.push(item_ident))
     }
 
-    fn add_import(&mut self, path: Vec<Ident>, import: Vec<Ident>, vis: UseVisibility) {
+    fn add_import(&mut self, path: Vec<Ident>, import: Import, vis: UseVisibility) {
         let uses_at_path = self.uses.entry(path).or_default();
 
         uses_at_path.push((import, vis))
@@ -188,8 +186,8 @@ impl<'a, 'ast> Visit<'ast> for ExportedItemsVisitor<'ast> {
     }
 }
 
-fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
-    fn flatten_use_tree_inner(tree: &UseTree, current: &[Ident]) -> Vec<Vec<Ident>> {
+fn flatten_use_tree(tree: &UseTree) -> Vec<Import> {
+    fn flatten_use_tree_inner(tree: &UseTree, current: &[Ident]) -> Vec<Import> {
         match tree {
             UseTree::Path(p) => {
                 let current = current
@@ -208,7 +206,7 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
                     .chain(iter::once(n.ident.clone()))
                     .collect::<Vec<_>>();
 
-                vec![current]
+                vec![Import::non_renamed(current)]
             }
 
             UseTree::Group(g) => g
@@ -216,6 +214,17 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
                 .iter()
                 .flat_map(|item| flatten_use_tree_inner(item, current))
                 .collect(),
+
+            UseTree::Rename(r) => {
+                let name = r.rename.clone();
+                let path = current
+                    .iter()
+                    .chain(iter::once(&r.ident))
+                    .cloned()
+                    .collect();
+
+                vec![Import::renamed(path, name)]
+            }
 
             _ if current.starts_with(&[parse_quote! { std }, parse_quote! { prelude }]) => {
                 Vec::new()
@@ -226,6 +235,36 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
     }
 
     flatten_use_tree_inner(tree, &[])
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Import {
+    path: Vec<Ident>,
+    renamed: Option<Ident>,
+}
+
+impl Import {
+    fn non_renamed(path: Vec<Ident>) -> Import {
+        Import {
+            path,
+            ..Default::default()
+        }
+    }
+
+    fn renamed(path: Vec<Ident>, name: Ident) -> Import {
+        let renamed = Some(name);
+        Import { path, renamed }
+    }
+
+    fn path(&self) -> &[Ident] {
+        self.path.as_slice()
+    }
+
+    fn name(&self) -> &Ident {
+        self.renamed
+            .as_ref()
+            .unwrap_or_else(|| self.path.last().unwrap())
+    }
 }
 
 #[cfg(test)]
@@ -396,6 +435,24 @@ mod tests {
         let tmp = [parse_quote! { foo }, parse_quote! { bar }];
 
         let left = resolver.resolve(&[], &parse_quote! { bar });
+        let right = Some(&tmp as _);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn handles_renaming() {
+        let resolver: PathResolver = parse_quote! {
+            use foo::bar as baz;
+
+            pub mod foo {
+                pub fn bar() {}
+            }
+        };
+
+        let tmp = [parse_quote! { foo }, parse_quote! { bar }];
+
+        let left = resolver.resolve(&[], &parse_quote! { baz });
         let right = Some(&tmp as _);
 
         assert_eq!(left, right);
