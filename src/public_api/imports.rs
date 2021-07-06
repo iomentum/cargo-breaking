@@ -4,6 +4,7 @@ use std::{
 };
 
 use syn::{
+    parse_quote,
     visit::{self, Visit},
     Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, ItemUse, Path, UseTree, Visibility,
 };
@@ -193,8 +194,8 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
             UseTree::Path(p) => {
                 let current = current
                     .iter()
+                    .chain(iter::once(&p.ident))
                     .cloned()
-                    .chain(iter::once(p.ident.clone()))
                     .collect::<Vec<_>>();
 
                 flatten_use_tree_inner(&p.tree, current.as_slice())
@@ -215,6 +216,10 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
                 .iter()
                 .flat_map(|item| flatten_use_tree_inner(item, current))
                 .collect(),
+
+            _ if current.starts_with(&[parse_quote! { std }, parse_quote! { prelude }]) => {
+                Vec::new()
+            }
 
             _ => todo!(),
         }
