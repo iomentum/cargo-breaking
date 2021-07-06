@@ -1,8 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    iter::{self, Peekable},
+};
 
 use syn::{
     visit::{self, Visit},
-    Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, Path, Visibility,
+    Ident, ItemEnum, ItemFn, ItemMod, ItemStruct, ItemUse, Path, UseTree, Visibility,
 };
 
 #[cfg(test)]
@@ -39,11 +42,10 @@ impl PathResolver {
             .map(|segment| &segment.ident)
             .peekable();
 
-        let from_current_path = if item_idents.next_if_eq(&"crate").is_some() {
-            &[]
-        } else {
-            current_path
-        };
+        let from_current_path = self
+            .find_rooted_path(&mut item_idents)
+            .or_else(|| self.find_import_for_path(current_path, &mut item_idents))
+            .unwrap_or(current_path);
 
         let full_path = from_current_path
             .iter()
@@ -52,6 +54,33 @@ impl PathResolver {
             .collect::<Vec<_>>();
 
         self.items.get(full_path.as_slice()).map(Vec::as_slice)
+    }
+
+    // Note: item_path is taken by mutable reference because it is expected to
+    // discard the path segment if we have a match.
+    fn find_rooted_path<'a>(
+        &self,
+        item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
+    ) -> Option<&[Ident]> {
+        item_path.next_if_eq(&"crate").map(|_| &[] as _)
+    }
+
+    // Note: item_path is taken by mutable reference because it is expected to
+    // discard the path segment if we have a match.
+    fn find_import_for_path<'a>(
+        &self,
+        current_path: &[Ident],
+        item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
+    ) -> Option<&[Ident]> {
+        let imports_in_module = self.uses.get(current_path)?;
+
+        // No path can be empty. As such, the following call to unwrap is
+        // correct.
+        imports_in_module.iter().find_map(|(import, _)| {
+            item_path
+                .next_if_eq(&import.last().unwrap())
+                .map(|_| import.as_slice())
+        })
     }
 }
 
@@ -71,7 +100,7 @@ enum UseVisibility {
 
 struct ExportedItemsVisitor<'a> {
     items: &'a mut HashSet<Vec<Ident>>,
-    uses: &'a HashMap<Vec<Ident>, Vec<(Vec<Ident>, UseVisibility)>>,
+    uses: &'a mut HashMap<Vec<Ident>, Vec<(Vec<Ident>, UseVisibility)>>,
     path: Vec<Ident>,
 }
 
@@ -94,6 +123,12 @@ impl<'a> ExportedItemsVisitor<'a> {
 
     fn create_full_path(&self, item_ident: Ident) -> Vec<Ident> {
         self.path.clone().tap_mut(|p| p.push(item_ident))
+    }
+
+    fn add_import(&mut self, path: Vec<Ident>, import: Vec<Ident>, vis: UseVisibility) {
+        let uses_at_path = self.uses.entry(path).or_default();
+
+        uses_at_path.push((import, vis))
     }
 }
 
@@ -137,6 +172,48 @@ impl<'a, 'ast> Visit<'ast> for ExportedItemsVisitor<'ast> {
         let enum_path = self.create_full_path(i.ident.clone());
         self.items.insert(enum_path);
     }
+
+    fn visit_item_use(&mut self, i: &'ast ItemUse) {
+        let vis = match &i.vis {
+            Visibility::Inherited => UseVisibility::Private,
+            Visibility::Crate(_) => UseVisibility::PubCrate,
+            Visibility::Public(_) => UseVisibility::Pub,
+            _ => todo!(),
+        };
+
+        for imported_item in flatten_use_tree(&i.tree) {
+            self.add_import(self.path.to_owned(), imported_item, vis)
+        }
+    }
+}
+
+fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
+    fn flatten_use_tree_inner(tree: &UseTree, current: &[Ident]) -> Vec<Vec<Ident>> {
+        match tree {
+            UseTree::Path(p) => {
+                let current = current
+                    .iter()
+                    .cloned()
+                    .chain(iter::once(p.ident.clone()))
+                    .collect::<Vec<_>>();
+
+                flatten_use_tree_inner(&p.tree, current.as_slice())
+            }
+            UseTree::Name(n) => {
+                let current = current
+                    .iter()
+                    .cloned()
+                    .chain(iter::once(n.ident.clone()))
+                    .collect::<Vec<_>>();
+
+                vec![current]
+            }
+
+            _ => todo!(),
+        }
+    }
+
+    flatten_use_tree_inner(tree, &[])
 }
 
 #[cfg(test)]
@@ -253,6 +330,24 @@ mod tests {
         let tmp = [parse_quote! { foo }, parse_quote! { bar }];
 
         let left = resolver.resolve(&[], &parse_quote! { crate::foo::bar });
+        let right = Some(&tmp as _);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn resolves_when_brought_in_by_use_single_segment() {
+        let resolver: PathResolver = parse_quote! {
+            use foo::bar;
+
+            pub mod foo {
+                pub fn bar() {}
+            }
+        };
+
+        let tmp = [parse_quote! { foo }, parse_quote! { bar }];
+
+        let left = resolver.resolve(&[], &parse_quote! { bar });
         let right = Some(&tmp as _);
 
         assert_eq!(left, right);
