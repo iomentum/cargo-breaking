@@ -59,8 +59,6 @@ impl<'a, 'ast> Visit<'ast> for MethodVisitor<'a> {
     }
 
     fn visit_item_impl(&mut self, impl_: &'ast ItemImpl) {
-        // TODO: filter out types that are not public.
-
         if impl_.trait_.is_some() {
             return;
         }
