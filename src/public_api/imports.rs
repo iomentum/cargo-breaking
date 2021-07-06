@@ -75,8 +75,6 @@ impl PathResolver {
     ) -> Option<&[Ident]> {
         let imports_in_module = self.uses.get(current_path)?;
 
-        // No path can be empty. As such, the following call to unwrap is
-        // correct.
         imports_in_module
             .iter()
             .find_map(|(import, _)| item_path.next_if_eq(&import.name()).map(|_| import.path()))
