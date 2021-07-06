@@ -199,6 +199,7 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
 
                 flatten_use_tree_inner(&p.tree, current.as_slice())
             }
+
             UseTree::Name(n) => {
                 let current = current
                     .iter()
@@ -208,6 +209,12 @@ fn flatten_use_tree(tree: &UseTree) -> Vec<Vec<Ident>> {
 
                 vec![current]
             }
+
+            UseTree::Group(g) => g
+                .items
+                .iter()
+                .flat_map(|item| flatten_use_tree_inner(item, current))
+                .collect(),
 
             _ => todo!(),
         }
@@ -339,6 +346,42 @@ mod tests {
     fn resolves_when_brought_in_by_use_single_segment() {
         let resolver: PathResolver = parse_quote! {
             use foo::bar;
+
+            pub mod foo {
+                pub fn bar() {}
+            }
+        };
+
+        let tmp = [parse_quote! { foo }, parse_quote! { bar }];
+
+        let left = resolver.resolve(&[], &parse_quote! { bar });
+        let right = Some(&tmp as _);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn resolves_when_brought_in_by_grouped_import_ident() {
+        let resolver: PathResolver = parse_quote! {
+            use foo::{bar};
+
+            pub mod foo {
+                pub fn bar() {}
+            }
+        };
+
+        let tmp = [parse_quote! { foo }, parse_quote! { bar }];
+
+        let left = resolver.resolve(&[], &parse_quote! { bar });
+        let right = Some(&tmp as _);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn resolves_when_brought_in_by_grouped_import_subpath() {
+        let resolver: PathResolver = parse_quote! {
+            use {foo::bar};
 
             pub mod foo {
                 pub fn bar() {}
