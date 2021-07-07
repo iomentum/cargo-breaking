@@ -11,13 +11,14 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
-use syn::{visit::Visit, Ident};
-
-#[cfg(test)]
 use syn::{
     parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
+    visit::Visit,
+    Ident,
 };
+
+#[cfg(test)]
+use syn::Token;
 
 use tap::Tap;
 
@@ -69,7 +70,6 @@ impl PublicApi {
     }
 }
 
-#[cfg(test)]
 impl Parse for PublicApi {
     fn parse(input: ParseStream) -> ParseResult<PublicApi> {
         let ast = input.parse()?;

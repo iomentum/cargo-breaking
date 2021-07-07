@@ -6,7 +6,6 @@ use std::{
 
 use semver::{BuildMetadata, Prerelease, Version};
 
-#[cfg(test)]
 use syn::{
     braced,
     parse::{Parse, ParseStream, Result as ParseResult},
@@ -55,7 +54,6 @@ impl ApiComparator {
     }
 }
 
-#[cfg(test)]
 impl Parse for ApiComparator {
     fn parse(input: ParseStream) -> ParseResult<ApiComparator> {
         let previous;
@@ -150,6 +148,14 @@ impl ApiCompatibilityDiagnostics {
 
     fn next_patch(v: &mut Version) {
         v.patch += 1;
+    }
+}
+
+impl Parse for ApiCompatibilityDiagnostics {
+    fn parse(input: ParseStream) -> ParseResult<ApiCompatibilityDiagnostics> {
+        let comparator = input.parse::<ApiComparator>()?;
+
+        Ok(comparator.run())
     }
 }
 
