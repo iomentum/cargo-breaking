@@ -1,7 +1,7 @@
-use syn::{Error as SynError, File};
-
-#[cfg(test)]
-use syn::parse::{Parse, ParseStream, Result as ParseResult};
+use syn::{
+    parse::{Parse, ParseStream, Result as ParseResult},
+    Error as SynError, File,
+};
 
 use std::str::FromStr;
 
@@ -22,7 +22,6 @@ impl FromStr for CrateAst {
     }
 }
 
-#[cfg(test)]
 impl Parse for CrateAst {
     fn parse(input: ParseStream) -> ParseResult<CrateAst> {
         Ok(CrateAst(input.parse()?))

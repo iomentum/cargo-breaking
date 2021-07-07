@@ -8,6 +8,7 @@ mod manifest;
 mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
+pub use comparator::ApiCompatibilityDiagnostics;
 pub use glue::compare;
 
 use crate::{
