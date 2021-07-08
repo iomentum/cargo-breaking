@@ -45,6 +45,7 @@ impl PathResolver {
 
         let from_current_path = self
             .find_rooted_path(&mut item_idents)
+            .or_else(|| self.find_super_prefixed_path(current_path, &mut item_idents))
             .or_else(|| self.find_import_for_path(current_path, &mut item_idents))
             .unwrap_or(current_path);
 
@@ -64,6 +65,21 @@ impl PathResolver {
         item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
     ) -> Option<&[Ident]> {
         item_path.next_if_eq(&"crate").map(|_| &[] as _)
+    }
+
+    // Note: item_path is taken by mutable reference because it is expected to
+    // discard the path segment if we have a match.
+    fn find_super_prefixed_path<'a, 'b>(
+        &self,
+        current_path: &'b [Ident],
+        item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
+    ) -> Option<&'b [Ident]> {
+        let segments_to_discard = iter::from_fn(|| item_path.next_if_eq(&"super")).count();
+
+        match segments_to_discard {
+            0 => None,
+            _ => Some(&current_path[0..current_path.len() - segments_to_discard]),
+        }
     }
 
     // Note: item_path is taken by mutable reference because it is expected to
@@ -187,6 +203,8 @@ impl<'a, 'ast> Visit<'ast> for ExportedItemsVisitor<'ast> {
 fn flatten_use_tree(tree: &UseTree) -> Vec<Import> {
     fn flatten_use_tree_inner(tree: &UseTree, current: &[Ident]) -> Vec<Import> {
         match tree {
+            UseTree::Path(p) if p.ident == "super" => flatten_use_tree_inner(&p.tree, current),
+
             UseTree::Path(p) => {
                 let current = current
                     .iter()
@@ -452,6 +470,63 @@ mod tests {
 
         let left = resolver.resolve(&[], &parse_quote! { baz });
         let right = Some(&tmp as _);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn handles_super_on_resolution() {
+        let resolver: PathResolver = parse_quote! {
+            mod foo {}
+
+            pub struct Foo;
+        };
+
+        let tmp = [parse_quote! { Foo }];
+
+        let left = resolver.resolve(&[parse_quote! { foo }], &parse_quote! { super::Foo });
+        let right = Some(&tmp as &_);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn handles_super_on_import() {
+        let resolver: PathResolver = parse_quote! {
+            pub mod foo {
+                use super::Foo;
+            }
+
+            pub struct Foo;
+        };
+
+        let tmp = [parse_quote! { Foo }];
+
+        let left = resolver.resolve(&[parse_quote! { foo }], &parse_quote! { Foo });
+        let right = Some(&tmp as &_);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn handles_two_supers_on_import() {
+        let resolver: PathResolver = parse_quote! {
+            pub mod foo {
+                pub mod bar {
+                    use super::super::Foo;
+                }
+            }
+
+            pub struct Foo;
+        };
+
+        let tmp = [parse_quote! { Foo }];
+
+        let left = resolver.resolve(
+            &[parse_quote! { foo }, parse_quote! { bar }],
+            &parse_quote! { Foo },
+        );
+        let right = Some(&tmp as &_);
 
         assert_eq!(left, right);
     }
