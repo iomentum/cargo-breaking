@@ -45,15 +45,22 @@ impl PathResolver {
 
         let from_current_path = self
             .find_rooted_path(&mut item_idents)
-            .or_else(|| self.find_super_prefixed_path(current_path, &mut item_idents))
             .or_else(|| self.find_import_for_path(current_path, &mut item_idents))
             .unwrap_or(current_path);
 
-        let full_path = from_current_path
-            .iter()
-            .chain(item_idents)
-            .cloned()
-            .collect::<Vec<_>>();
+        let full_path_iter = from_current_path.iter().chain(item_idents);
+
+        // The provided capacity is not always correct, but it is always a
+        // correct upper bound.
+        let mut full_path = Vec::with_capacity(from_current_path.len() + item_path.segments.len());
+
+        for item in full_path_iter {
+            if item == "super" {
+                full_path.pop().unwrap();
+            } else {
+                full_path.push(item.clone());
+            }
+        }
 
         self.items.get(full_path.as_slice()).map(Vec::as_slice)
     }
@@ -65,21 +72,6 @@ impl PathResolver {
         item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
     ) -> Option<&[Ident]> {
         item_path.next_if_eq(&"crate").map(|_| &[] as _)
-    }
-
-    // Note: item_path is taken by mutable reference because it is expected to
-    // discard the path segment if we have a match.
-    fn find_super_prefixed_path<'a, 'b>(
-        &self,
-        current_path: &'b [Ident],
-        item_path: &mut Peekable<impl Iterator<Item = &'a Ident>>,
-    ) -> Option<&'b [Ident]> {
-        let segments_to_discard = iter::from_fn(|| item_path.next_if_eq(&"super")).count();
-
-        match segments_to_discard {
-            0 => None,
-            _ => Some(&current_path[0..current_path.len() - segments_to_discard]),
-        }
     }
 
     // Note: item_path is taken by mutable reference because it is expected to
@@ -526,6 +518,28 @@ mod tests {
             &[parse_quote! { foo }, parse_quote! { bar }],
             &parse_quote! { Foo },
         );
+        let right = Some(&tmp as &_);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn handles_super_anywhere_in_path() {
+        let resolver: PathResolver = parse_quote! {
+            pub mod foo {
+                pub mod bar {
+                    pub struct Baz;
+                }
+            }
+        };
+
+        let foo: Ident = parse_quote! { foo };
+        let bar: Ident = parse_quote! { bar };
+        let baz: Ident = parse_quote! { Baz };
+
+        let tmp = [foo.clone(), bar.clone(), baz.clone()];
+
+        let left = resolver.resolve(&[foo], &parse_quote! { bar::super::bar::Baz });
         let right = Some(&tmp as &_);
 
         assert_eq!(left, right);
