@@ -22,31 +22,6 @@ $ cargo breaking
 Next version is: 3.0.0
 ```
 
-## Installation
-
-`cargo-breaking` needs the nightly toolchain to be installed to work correctly,
-but can be compiled with any toolchain. It can be compiled from sources with the
-following commands:
-
-```none
-$ git clone https://github.com/iomentum/cargo-breaking
-$ cd cargo-breaking
-$ cargo install --path ./
-```
-
-You may need to add the `--force` argument from the last command if you're
-upgrading from a previous version.
-
-### From a development branch
-
-Most work is commited in separate branch, before getting merged to `main` all
-at once, once we're satisfied with the refactoring, fixes, and features added.
-These branches are named `scrabsha/iter-dd-mm-yy`, representing the date at
-which the iteration is started (for instance, `scrabsha/iter-19-06-21`).
-
-Installing `cargo-breaking` from the following branches give you the latest
-changes. It may have instabilities, though.
-
 ## Goals and non goals
 
 `cargo-breaking` aims to detect most breaking changes, but deliberately chooses
@@ -80,3 +55,30 @@ As we compare parts of the crate AST, it reports a lot of false positives:
 [semver]: https://semver.org/
 [add-field-pg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=492a1727404d1f8d199962c639454f44
 [ania]: https://docs.rs/static_assertions/1.1.0/static_assertions/macro.assert_not_impl_any.html
+
+## Contribution
+
+### Installation
+
+`cargo-breaking` needs the nightly toolchain to be installed to work correctly,
+but can be compiled with any toolchain. It can be compiled from sources with the
+following commands:
+
+```none
+$ git clone https://github.com/iomentum/cargo-breaking
+$ cd cargo-breaking
+$ cargo install --path ./
+```
+
+You may need to add the `--force` argument to the last command if you're
+upgrading from a previous version.
+
+### Git workflow
+
+Most work is commited in separate branch, before getting merged to `main` all
+at once, once we're satisfied with the refactoring, fixes, and features added.
+These branches are named `scrabsha/iter-dd-mm-yy`, representing the date at
+which the iteration is started (for instance, `scrabsha/iter-19-06-21`).
+
+Installing `cargo-breaking` from the following branches give you the latest
+changes. It may have instabilities, though.
