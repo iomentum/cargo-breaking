@@ -112,3 +112,24 @@ fn empty_struct_kind_change_is_modification() {
         }
     }
 }
+
+#[test]
+fn is_reported_lexicographically() {
+    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+        {},
+        {
+            pub fn a() {}
+            pub fn z() {}
+        }
+    };
+    assert_eq!(diff.to_string(), "+ a\n+ z\n");
+
+    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+        {},
+        {
+            pub fn z() {}
+            pub fn a() {}
+        }
+    };
+    assert_eq!(diff.to_string(), "+ a\n+ z\n");
+}
