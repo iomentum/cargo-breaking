@@ -13,7 +13,7 @@ use syn::{
 };
 
 use crate::{
-    diagnosis::{DiagnosisItem, DiagnosticGenerator},
+    diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
     public_api::PublicApi,
 };
 
@@ -28,29 +28,34 @@ impl ApiComparator {
     }
 
     pub fn run(&self) -> ApiCompatibilityDiagnostics {
-        let mut diags: Vec<_> = self.item_removals().collect();
+        let mut collector = DiagnosisCollector::new();
 
-        diags.extend(self.item_modifications());
-        diags.extend(self.item_additions());
+        self.item_removals(&mut collector);
+        self.item_modifications(&mut collector);
+        self.item_additions(&mut collector);
 
+        let mut diags = collector.finalize();
         diags.sort();
 
         ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
+    fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.previous.items(), self.current.items())
-            .flat_map(|(path, kind)| kind.removal_diagnosis(path))
+            .for_each(|(path, kind)| kind.removal_diagnosis(path, diagnosis_collector))
     }
 
-    fn item_modifications(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
-        map_modifications(self.previous.items(), self.current.items())
-            .flat_map(|(path, kind_a, kind_b)| kind_a.modification_diagnosis(kind_b, path))
+    fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
+        map_modifications(self.previous.items(), self.current.items()).for_each(
+            |(path, kind_a, kind_b)| {
+                kind_a.modification_diagnosis(kind_b, path, diagnosis_collector)
+            },
+        )
     }
 
-    fn item_additions(&self) -> impl Iterator<Item = DiagnosisItem> + '_ {
+    fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.current.items(), self.previous.items())
-            .flat_map(|(path, kind)| kind.addition_diagnosis(path))
+            .for_each(|(path, kind)| kind.addition_diagnosis(path, diagnosis_collector))
     }
 }
 

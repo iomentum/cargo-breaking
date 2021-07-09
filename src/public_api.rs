@@ -24,7 +24,7 @@ use tap::Tap;
 
 use crate::{
     ast::CrateAst,
-    diagnosis::{DiagnosisItem, DiagnosticGenerator},
+    diagnosis::{DiagnosisCollector, DiagnosticGenerator},
 };
 
 use self::{
@@ -160,35 +160,45 @@ impl ItemKind {
 }
 
 impl DiagnosticGenerator for ItemKind {
-    fn removal_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
+    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
         match self {
-            ItemKind::Fn(f) => f.removal_diagnosis(path),
-            ItemKind::Type(t) => t.removal_diagnosis(path),
-            ItemKind::Method(m) => m.removal_diagnosis(path),
-            ItemKind::TraitDef(t) => t.removal_diagnosis(path),
+            ItemKind::Fn(f) => f.removal_diagnosis(path, collector),
+            ItemKind::Type(t) => t.removal_diagnosis(path, collector),
+            ItemKind::Method(m) => m.removal_diagnosis(path, collector),
+            ItemKind::TraitDef(t) => t.removal_diagnosis(path, collector),
         }
     }
 
-    fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
+    fn modification_diagnosis(
+        &self,
+        other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
         match (self, other) {
-            (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path),
-            (ItemKind::Type(ta), ItemKind::Type(tb)) => ta.modification_diagnosis(tb, path),
-            (ItemKind::Method(ma), ItemKind::Method(mb)) => ma.modification_diagnosis(mb, path),
-            (ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => ta.modification_diagnosis(tb, path),
+            (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path, collector),
+            (ItemKind::Type(ta), ItemKind::Type(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }
+            (ItemKind::Method(ma), ItemKind::Method(mb)) => {
+                ma.modification_diagnosis(mb, path, collector)
+            }
+            (ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }
             (a, b) => {
-                let mut diags = a.removal_diagnosis(path);
-                diags.extend(b.addition_diagnosis(path));
-                diags
+                a.removal_diagnosis(path, collector);
+                b.addition_diagnosis(path, collector);
             }
         }
     }
 
-    fn addition_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
+    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
         match self {
-            ItemKind::Fn(f) => f.addition_diagnosis(path),
-            ItemKind::Type(t) => t.addition_diagnosis(path),
-            ItemKind::Method(m) => m.addition_diagnosis(path),
-            ItemKind::TraitDef(t) => t.addition_diagnosis(path),
+            ItemKind::Fn(f) => f.addition_diagnosis(path, collector),
+            ItemKind::Type(t) => t.addition_diagnosis(path, collector),
+            ItemKind::Method(m) => m.addition_diagnosis(path, collector),
+            ItemKind::TraitDef(t) => t.addition_diagnosis(path, collector),
         }
     }
 }

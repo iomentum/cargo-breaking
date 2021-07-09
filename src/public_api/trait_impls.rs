@@ -10,7 +10,7 @@ use syn::{
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
 use crate::{
-    diagnosis::{DiagnosisItem, DiagnosticGenerator},
+    diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
     public_api::utils,
 };
 
@@ -149,25 +149,30 @@ impl TraitImplMetadata {
 }
 
 impl DiagnosticGenerator for TraitImplMetadata {
-    fn removal_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::removal(
+    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::removal(
             path.clone(),
             Some(self.trait_name.clone()),
-        )]
+        ));
     }
 
-    fn modification_diagnosis(&self, _other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::modification(
+    fn modification_diagnosis(
+        &self,
+        _other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
+        collector.add(DiagnosisItem::modification(
             path.clone(),
             Some(self.trait_name.clone()),
-        )]
+        ));
     }
 
-    fn addition_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::addition(
+    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::addition(
             path.clone(),
             Some(self.trait_name.clone()),
-        )]
+        ));
     }
 }
 
