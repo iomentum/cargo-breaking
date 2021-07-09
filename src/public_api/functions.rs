@@ -69,7 +69,10 @@ pub(crate) struct FnPrototype {
 }
 
 impl FnPrototype {
-    fn new(sig: Signature) -> FnPrototype {
+    fn new(mut sig: Signature) -> FnPrototype {
+        if let Some(last) = sig.inputs.pop() {
+            sig.inputs.push(last.value().clone());
+        }
         FnPrototype { sig }
     }
 }

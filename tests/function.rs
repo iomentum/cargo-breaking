@@ -68,6 +68,20 @@ fn body_change_not_detected() {
 }
 
 #[test]
+fn fn_arg_comma_is_removed() {
+    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+        {
+            pub fn a(a: t, b: t, c: t,) {}
+        },
+        {
+            pub fn a(a: t, b: t, c: t) {}
+        },
+    };
+
+    assert!(diff.is_empty());
+}
+
+#[test]
 fn empty_struct_kind_change_is_modification() {
     let files = ["pub struct A;", "pub struct A();", "pub struct A {}"];
 
