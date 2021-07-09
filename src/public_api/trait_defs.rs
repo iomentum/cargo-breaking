@@ -11,7 +11,7 @@ use syn::{
 #[cfg(test)]
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
-use crate::diagnosis::{DiagnosisItem, DiagnosticGenerator};
+use crate::diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator};
 
 use super::{imports::PathResolver, ItemKind, ItemPath};
 
@@ -106,35 +106,36 @@ impl Into<ItemKind> for TraitDefMetadata {
 }
 
 impl DiagnosticGenerator for TraitDefMetadata {
-    fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        let mut diags = Vec::new();
-
+    fn modification_diagnosis(
+        &self,
+        other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
         if self.generics != other.generics || self.supertraits != other.supertraits {
-            diags.push(DiagnosisItem::modification(path.clone(), None));
+            collector.add(DiagnosisItem::modification(path.clone(), None));
         }
 
         diagnosis_for_nameable(
             self.consts.as_slice(),
             other.consts.as_slice(),
             path,
-            &mut diags,
+            collector,
         );
 
         diagnosis_for_nameable(
             self.methods.as_slice(),
             other.methods.as_slice(),
             path,
-            &mut diags,
+            collector,
         );
 
         diagnosis_for_nameable(
             self.types.as_slice(),
             other.types.as_slice(),
             path,
-            &mut diags,
+            collector,
         );
-
-        diags
     }
 }
 
@@ -151,7 +152,7 @@ fn diagnosis_for_nameable<Item>(
     left: &[Item],
     right: &[Item],
     path: &ItemPath,
-    diags: &mut Vec<DiagnosisItem>,
+    collector: &mut DiagnosisCollector,
 ) where
     Item: Nameable + PartialEq,
 {
@@ -170,7 +171,7 @@ fn diagnosis_for_nameable<Item>(
                 };
 
                 let diagnosis = diagnostic_creator(path, None);
-                diags.push(diagnosis);
+                collector.add(diagnosis);
             }
         }
     }
@@ -181,7 +182,7 @@ fn diagnosis_for_nameable<Item>(
         if Item::find_named(left, right_item_name).is_none() {
             let path = ItemPath::extend(path.clone(), right_item_name.clone());
             let diagnosis = DiagnosisItem::addition(path, None);
-            diags.push(diagnosis)
+            collector.add(diagnosis)
         }
     }
 }
