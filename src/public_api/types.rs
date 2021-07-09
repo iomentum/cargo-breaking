@@ -13,7 +13,7 @@ use tap::Conv;
 #[cfg(test)]
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 
-use crate::diagnosis::{DiagnosisItem, DiagnosticGenerator};
+use crate::diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator};
 
 use super::{trait_impls::TraitImplMetadata, ItemKind, ItemPath};
 
@@ -115,12 +115,15 @@ impl TypeMetadata {
 }
 
 impl DiagnosticGenerator for TypeMetadata {
-    fn modification_diagnosis(&self, other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        let mut diags = if self.inner != other.inner {
-            vec![DiagnosisItem::modification(path.clone(), None)]
-        } else {
-            Vec::new()
-        };
+    fn modification_diagnosis(
+        &self,
+        other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
+        if self.inner != other.inner {
+            collector.add(DiagnosisItem::modification(path.clone(), None));
+        }
 
         // TODO: replace these O(n²) zone with a faster implentation, perhaps by
         // using an ordered list or a HashMap.
@@ -129,12 +132,12 @@ impl DiagnosticGenerator for TypeMetadata {
             match other.find_trait(trait_1.trait_name()) {
                 Some(trait_2) if trait_1 == trait_2 => {}
 
-                Some(_) => diags.push(DiagnosisItem::modification(
+                Some(_) => collector.add(DiagnosisItem::modification(
                     path.clone(),
                     Some(trait_1.trait_name().clone()),
                 )),
 
-                None => diags.push(DiagnosisItem::removal(
+                None => collector.add(DiagnosisItem::removal(
                     path.clone(),
                     Some(trait_1.trait_name().clone()),
                 )),
@@ -143,14 +146,12 @@ impl DiagnosticGenerator for TypeMetadata {
 
         for trait_2 in other.traits.iter() {
             if self.find_trait(trait_2.trait_name()).is_none() {
-                diags.push(DiagnosisItem::addition(
+                collector.add(DiagnosisItem::addition(
                     path.clone(),
                     Some(trait_2.trait_name().clone()),
                 ));
             }
         }
-
-        diags
     }
 }
 

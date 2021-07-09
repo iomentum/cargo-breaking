@@ -10,17 +10,40 @@ use syn::{
 
 use crate::public_api::ItemPath;
 
+pub struct DiagnosisCollector {
+    inner: Vec<DiagnosisItem>,
+}
+
+impl DiagnosisCollector {
+    pub fn new() -> DiagnosisCollector {
+        DiagnosisCollector { inner: Vec::new() }
+    }
+
+    pub(crate) fn add(&mut self, diagnosis_item: DiagnosisItem) {
+        self.inner.push(diagnosis_item);
+    }
+
+    pub(crate) fn finalize(self) -> Vec<DiagnosisItem> {
+        self.inner
+    }
+}
+
 pub(crate) trait DiagnosticGenerator {
-    fn removal_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::removal(path.clone(), None)]
+    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::removal(path.clone(), None));
     }
 
-    fn modification_diagnosis(&self, _other: &Self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::modification(path.clone(), None)]
+    fn modification_diagnosis(
+        &self,
+        _other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
+        collector.add(DiagnosisItem::modification(path.clone(), None));
     }
 
-    fn addition_diagnosis(&self, path: &ItemPath) -> Vec<DiagnosisItem> {
-        vec![DiagnosisItem::addition(path.clone(), None)]
+    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::addition(path.clone(), None));
     }
 }
 
