@@ -22,6 +22,15 @@ $ cargo breaking
 Next version is: 3.0.0
 ```
 
+### Args
+
+`against`, an arg to specify the github ref (a tag, a branch name or a commit) against which we can compare our current crate version.
+- use:
+```none
+cargo breaking -a branch_name
+```
+- default: "main"
+
 ## Goals and non goals
 
 `cargo-breaking` aims to detect most breaking changes, but deliberately chooses

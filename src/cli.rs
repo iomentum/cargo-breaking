@@ -11,6 +11,10 @@ impl ProgramConfig {
             .author(crate_authors!())
             .about(crate_description!())
             .arg(
+                Arg::with_name("crate_name")
+                    .required(false)
+            )
+            .arg(
                 Arg::with_name("against")
                     .short("a")
                     .help("Sets the git reference to compare the API against. Can be a tag, a branch name or a commit.")
