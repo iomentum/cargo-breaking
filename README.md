@@ -76,6 +76,6 @@ Mdbook is needed to get it running:
 
 ```none
 $ cargo install mdbook
-$ cd book
+$ cd docs
 $ mdbook serve
 ```
