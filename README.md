@@ -73,4 +73,4 @@ As we compare parts of the crate AST, it reports a lot of false positives:
 A book is maintained to help understanding how the crate works, and what are its inner parts and their behaviour.
 
 It can be found here :
-https://iomentum.github.io/cargo-breaking/
+[book](https://iomentum.github.io/cargo-breaking/)
