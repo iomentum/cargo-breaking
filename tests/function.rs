@@ -88,11 +88,11 @@ fn fn_arg_last_character_not_removed() {
             pub fn a(a: t, b: t, c: t) {}
         },
         {
-            pub fn a(a: t, b: t, c: t) {}
+            pub fn a(a: t, b: t, c: u) {}
         },
     };
 
-    assert!(diff.is_empty());
+    assert_eq!(diff.to_string(), "≠ a\n");
 }
 
 #[test]
