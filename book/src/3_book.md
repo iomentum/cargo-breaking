@@ -1,6 +1,6 @@
 # Book
 
-Mdbook is needed to get it running:
+Mdbook is needed to get running this book:
 
 ```none
 $ cargo install mdbook
