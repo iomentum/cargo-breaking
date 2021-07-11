@@ -10,3 +10,4 @@
   - [Comparator](./2_6_comparator.md)
   - [Diagnosis](./2_7_diagnosis.md)
   - [Next Version](./2_8_next_version.md)
+- [Book](./3_book.md)

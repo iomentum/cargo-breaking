@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>API Extraction - Guide to cargo-breaking Development</title>
+        <title>Book - Guide to cargo-breaking Development</title>
         <!-- Custom HTML head -->
         
 
@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="1_foreword.html"><strong aria-hidden="true">1.</strong> Foreword</a></li><li class="chapter-item expanded "><a href="2_0_process.html"><strong aria-hidden="true">2.</strong> Process</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="2_1_overview.html"><strong aria-hidden="true">2.1.</strong> Overview</a></li><li class="chapter-item expanded "><a href="2_2_config.html"><strong aria-hidden="true">2.2.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="2_3_repository.html"><strong aria-hidden="true">2.3.</strong> Repository</a></li><li class="chapter-item expanded "><a href="2_4_manifest.html"><strong aria-hidden="true">2.4.</strong> Manifest</a></li><li class="chapter-item expanded "><a href="2_5_api_extraction.html" class="active"><strong aria-hidden="true">2.5.</strong> API Extraction</a></li><li class="chapter-item expanded "><a href="2_6_comparator.html"><strong aria-hidden="true">2.6.</strong> Comparator</a></li><li class="chapter-item expanded "><a href="2_7_diagnosis.html"><strong aria-hidden="true">2.7.</strong> Diagnosis</a></li><li class="chapter-item expanded "><a href="2_8_next_version.html"><strong aria-hidden="true">2.8.</strong> Next Version</a></li></ol></li><li class="chapter-item expanded "><a href="3_book.html"><strong aria-hidden="true">3.</strong> Book</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="1_foreword.html"><strong aria-hidden="true">1.</strong> Foreword</a></li><li class="chapter-item expanded "><a href="2_0_process.html"><strong aria-hidden="true">2.</strong> Process</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="2_1_overview.html"><strong aria-hidden="true">2.1.</strong> Overview</a></li><li class="chapter-item expanded "><a href="2_2_config.html"><strong aria-hidden="true">2.2.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="2_3_repository.html"><strong aria-hidden="true">2.3.</strong> Repository</a></li><li class="chapter-item expanded "><a href="2_4_manifest.html"><strong aria-hidden="true">2.4.</strong> Manifest</a></li><li class="chapter-item expanded "><a href="2_5_api_extraction.html"><strong aria-hidden="true">2.5.</strong> API Extraction</a></li><li class="chapter-item expanded "><a href="2_6_comparator.html"><strong aria-hidden="true">2.6.</strong> Comparator</a></li><li class="chapter-item expanded "><a href="2_7_diagnosis.html"><strong aria-hidden="true">2.7.</strong> Diagnosis</a></li><li class="chapter-item expanded "><a href="2_8_next_version.html"><strong aria-hidden="true">2.8.</strong> Next Version</a></li></ol></li><li class="chapter-item expanded "><a href="3_book.html" class="active"><strong aria-hidden="true">3.</strong> Book</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -137,18 +137,25 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="api-extraction"><a class="header" href="#api-extraction">API Extraction</a></h1>
-<p>WORK IN PROGRESS</p>
+                        <h1 id="book"><a class="header" href="#book">Book</a></h1>
+<p>Mdbook is needed to get it running:</p>
+<pre><code class="language-none">$ cargo install mdbook
+$ cd book
+$ mdbook serve --dest-dir ../docs
+</code></pre>
+<h3 id="building-the-book"><a class="header" href="#building-the-book">Building the book</a></h3>
+<p>This updates the book so it is updated on push.</p>
+<p>// TODO! add this as a pre-commit hook</p>
+<pre><code>$ cd book
+$ mdbook build --dest-dir ../docs
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="2_4_manifest.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="2_8_next_version.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
-                            </a>
-                            <a rel="next" href="2_6_comparator.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
                     </nav>
@@ -156,11 +163,8 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="2_4_manifest.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="2_8_next_version.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
-                    </a>
-                    <a rel="next" href="2_6_comparator.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
 

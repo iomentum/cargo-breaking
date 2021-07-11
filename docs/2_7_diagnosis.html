@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="1_foreword.html"><strong aria-hidden="true">1.</strong> Foreword</a></li><li class="chapter-item expanded "><a href="2_0_process.html"><strong aria-hidden="true">2.</strong> Process</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="2_1_overview.html"><strong aria-hidden="true">2.1.</strong> Overview</a></li><li class="chapter-item expanded "><a href="2_2_config.html"><strong aria-hidden="true">2.2.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="2_3_repository.html"><strong aria-hidden="true">2.3.</strong> Repository</a></li><li class="chapter-item expanded "><a href="2_4_manifest.html"><strong aria-hidden="true">2.4.</strong> Manifest</a></li><li class="chapter-item expanded "><a href="2_5_api_extraction.html"><strong aria-hidden="true">2.5.</strong> API Extraction</a></li><li class="chapter-item expanded "><a href="2_6_comparator.html"><strong aria-hidden="true">2.6.</strong> Comparator</a></li><li class="chapter-item expanded "><a href="2_7_diagnosis.html" class="active"><strong aria-hidden="true">2.7.</strong> Diagnosis</a></li><li class="chapter-item expanded "><a href="2_8_next_version.html"><strong aria-hidden="true">2.8.</strong> Next Version</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="1_foreword.html"><strong aria-hidden="true">1.</strong> Foreword</a></li><li class="chapter-item expanded "><a href="2_0_process.html"><strong aria-hidden="true">2.</strong> Process</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="2_1_overview.html"><strong aria-hidden="true">2.1.</strong> Overview</a></li><li class="chapter-item expanded "><a href="2_2_config.html"><strong aria-hidden="true">2.2.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="2_3_repository.html"><strong aria-hidden="true">2.3.</strong> Repository</a></li><li class="chapter-item expanded "><a href="2_4_manifest.html"><strong aria-hidden="true">2.4.</strong> Manifest</a></li><li class="chapter-item expanded "><a href="2_5_api_extraction.html"><strong aria-hidden="true">2.5.</strong> API Extraction</a></li><li class="chapter-item expanded "><a href="2_6_comparator.html"><strong aria-hidden="true">2.6.</strong> Comparator</a></li><li class="chapter-item expanded "><a href="2_7_diagnosis.html" class="active"><strong aria-hidden="true">2.7.</strong> Diagnosis</a></li><li class="chapter-item expanded "><a href="2_8_next_version.html"><strong aria-hidden="true">2.8.</strong> Next Version</a></li></ol></li><li class="chapter-item expanded "><a href="3_book.html"><strong aria-hidden="true">3.</strong> Book</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -166,20 +166,6 @@
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script type="text/javascript">
-            var socket = new WebSocket("ws://localhost:3000/__livereload");
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
         <script type="text/javascript">
             window.playground_copyable = true;
         </script>
