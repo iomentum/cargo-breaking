@@ -1,0 +1,6 @@
+[book]
+authors = ["iomentum"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Guide to cargo-breaking Development"
