@@ -25,10 +25,13 @@ Next version is: 3.0.0
 ### Args
 
 `against`, an arg to specify the github ref (a tag, a branch name or a commit) against which we can compare our current crate version.
+
 - use:
+
 ```none
 cargo breaking -a branch_name
 ```
+
 - default: "main"
 
 ## Goals and non goals
@@ -38,7 +41,7 @@ to ignore the most subtle ones. This includes, but is not limited to:
 
 - when the size of a type changes ([playground example][add-field-pg]),
 - when a public trait is implemented for a type (see
-[`assert_not_impl_any`][ania]).
+  [`assert_not_impl_any`][ania]).
 
 ## Status
 
@@ -67,27 +70,7 @@ As we compare parts of the crate AST, it reports a lot of false positives:
 
 ## Contribution
 
-### Installation
+A book is maintained to help understanding how the crate works, and what are its inner parts and their behaviour.
 
-`cargo-breaking` needs the nightly toolchain to be installed to work correctly,
-but can be compiled with any toolchain. It can be compiled from sources with the
-following commands:
-
-```none
-$ git clone https://github.com/iomentum/cargo-breaking
-$ cd cargo-breaking
-$ cargo install --path ./
-```
-
-You may need to add the `--force` argument to the last command if you're
-upgrading from a previous version.
-
-### Git workflow
-
-Most work is commited in separate branch, before getting merged to `main` all
-at once, once we're satisfied with the refactoring, fixes, and features added.
-These branches are named `scrabsha/iter-dd-mm-yy`, representing the date at
-which the iteration is started (for instance, `scrabsha/iter-19-06-21`).
-
-Installing `cargo-breaking` from the following branches give you the latest
-changes. It may have instabilities, though.
+It can be found here :
+[book](https://iomentum.github.io/cargo-breaking/)
