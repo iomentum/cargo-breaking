@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: hecrj/setup-rust-action@v1
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Build release (Linux)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=x86_64-unknown-linux-gnu
+      - run: strip target/x86_64-unknown-linux-gnu/release/cargo-breaking
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: |
+            target/86_64-unknown-linux-gnu/release/cargo-breaking
+
+  build-osx:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - name: Build release (OSX)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=x86_64-apple-darwin
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build-osx
+          path: |
+            target/x86_64-apple-darwin/release/cargo-breaking
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: action/checkout@v2
+      - name: Build release (Windows)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build-windows
+          path: |
+            target/x86_64-pc-windows-msvc/release/cargo-breaking.exe
+
+release:
+  needs: [build-linux, build-osx]
+  runs-on: ubuntu-latest
+  steps:
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}
+    - uses: actions/download-artifact@v2
+      with:
+        name: build-linux
+        path: build-linux
+    - run: mv build-linux/cargo-breaking build-linux/cargo-breaking-${{ steps.get_version.outputs.VERSION }}-linux-x86_64
+    - uses: actions/download-artifact@v2
+      with:
+        name: build-osx
+        path: build-osx
+    - run: mv build-osx/cargo-breaking build-osx/cargo-breaking-${{ steps.get_version.outputs.VERSION }}-osx-x86_64
+    - uses: actions/download-artifact@v2
+      with:
+        name: build-windows
+        path: build-windows
+    - run: mv build-windows/cargo-breaking.exe build-windows/cargo-breaking-${{ steps.get_version.outputs.VERSION }}-windows-x86_64.exe
+    - name: Release
+      uses: softprops/actions-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        files: |
+          build-linux/*
+          build-osx/*
