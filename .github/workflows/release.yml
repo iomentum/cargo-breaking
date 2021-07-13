@@ -43,6 +43,22 @@ jobs:
           path: |
             target/x86_64-apple-darwin/release/cargo-breaking
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: action/checkout@v2
+      - name: Build release (Windows)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build-windows
+          path: |
+            target/x86_64-pc-windows-msvc/release/cargo-breaking.exe
+
 release:
   needs: [build-linux, build-osx]
   runs-on: ubuntu-latest
@@ -60,6 +76,11 @@ release:
         name: build-osx
         path: build-osx
     - run: mv build-osx/cargo-breaking build-osx/cargo-breaking-${{ steps.get_version.outputs.VERSION }}-osx-x86_64
+    - uses: actions/download-artifact@v2
+      with:
+        name: build-windows
+        path: build-windows
+    - run: mv build-windows/cargo-breaking.exe build-windows/cargo-breaking-${{ steps.get_version.outputs.VERSION }}-windows-x86_64.exe
     - name: Release
       uses: softprops/actions-gh-release@v1
       env:
