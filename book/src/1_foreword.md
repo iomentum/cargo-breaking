@@ -16,11 +16,11 @@ Next version is: 3.0.0
 
 ## Installation
 
-`cargo-breaking` needs the nightly toolchain to be installed to work correctly,
-but can be compiled with any toolchain. It can be compiled from sources with the
-following commands:
+`cargo-breaking` needs the nightly toolchain and a few other components to be installed to work correctly. Everything can be installed with:
 
 ```none
+$ rustup toolchain install nightly-2021-07-15
+$ rustup component add llvm-tools-preview rustc-dev rust-src
 $ git clone https://github.com/iomentum/cargo-breaking
 $ cd cargo-breaking
 $ cargo install --path ./
