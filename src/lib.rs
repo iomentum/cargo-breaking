@@ -17,7 +17,10 @@ use crate::{
 };
 
 pub fn run() -> AnyResult<()> {
-    let config = cli::ProgramConfig::parse();
+    let env =
+        cli::BuildEnvironment::from_cli().context("Failed to generate the build environment")?;
+
+    /*
 
     let mut repo = CrateRepo::current().context("Failed to fetch repository data")?;
 
@@ -39,6 +42,8 @@ pub fn run() -> AnyResult<()> {
 
     let next_version = diagnosis.guess_next_version(version);
     println!("Next version is: {}", next_version);
+
+    */
 
     Ok(())
 }
