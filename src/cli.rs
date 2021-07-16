@@ -12,6 +12,7 @@ use semver::Version;
 use self::glue_gen::{GlueCrate, GlueCrateGenerator};
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
+const GLUE_CRATE_NAME: &str = "glue";
 
 pub(crate) struct BuildEnvironment {
     args: Vec<String>,
@@ -58,8 +59,12 @@ enum ProgramInvocation {
 impl ProgramInvocation {
     fn parse() -> ProgramInvocation {
         if Self::is_run_by_cargo() {
-            ProgramInvocation::FromCargo {
-                args: env::args().skip(1).collect(),
+            if Self::must_build_glue() {
+                ProgramInvocation::FromCargo {
+                    args: env::args().skip(1).collect(),
+                }
+            } else {
+                Self::fallback_to_rustc()
             }
         } else {
             let args = App::new(crate_name!())
@@ -84,6 +89,19 @@ impl ProgramInvocation {
 
     fn is_run_by_cargo() -> bool {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
+    }
+
+    fn must_build_glue() -> bool {
+        let arg_value = env::args().nth(3);
+        matches!(arg_value.as_deref(), Some(GLUE_CRATE_NAME))
+    }
+
+    fn fallback_to_rustc() -> ! {
+        let exec_status = Command::new("rustc").args(env::args().skip(2)).status();
+        match exec_status {
+            Ok(_) => process::exit(0),
+            Err(e) => panic!("Failed to execute rustc: {}", e),
+        }
     }
 }
 
