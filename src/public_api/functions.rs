@@ -8,6 +8,8 @@ use syn::{
 #[cfg(test)]
 use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult};
 
+use rustc_span::def_id::DefId;
+
 use crate::diagnosis::DiagnosticGenerator;
 
 use super::{ItemKind, ItemPath};
@@ -94,5 +96,14 @@ impl Parse for FnPrototype {
 
         let sig = input.parse()?;
         Ok(FnPrototype { sig })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FnMetadata(pub(crate) DefId);
+
+impl FnMetadata {
+    pub(crate) fn new(id: DefId) -> FnMetadata {
+        FnMetadata(id)
     }
 }

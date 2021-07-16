@@ -107,7 +107,7 @@ impl ProgramInvocation {
 
 fn invoke_cargo(glue_crate: &GlueCrate) -> AnyResult<()> {
     let status = Command::new("cargo")
-        .env(RUN_WITH_CARGO_ENV_VARIABLE, "1")
+        .env(RUN_WITH_CARGO_ENV_VARIABLE, "1") // TODO: use rustc_wrapper env variable
         .arg("check")
         .arg("--manifest-path")
         .arg(glue_crate.manifest_path())
