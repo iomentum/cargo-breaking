@@ -10,7 +10,6 @@ mod comparator;
 mod diagnosis;
 mod git;
 mod glue;
-mod manifest;
 mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
