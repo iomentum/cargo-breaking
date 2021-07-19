@@ -8,6 +8,9 @@ use syn::{
     Token,
 };
 
+use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::DefId;
+
 use crate::public_api::ItemPath;
 
 pub struct DiagnosisCollector {
@@ -47,6 +50,40 @@ pub(crate) trait DiagnosticGenerator {
     }
 }
 
+pub(crate) trait DiagnosticGenerator2 {
+    fn removal_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::removal2(tcx.def_path_str(self.def_id())));
+    }
+
+    // TODO: this function is supposed to be called each time the DefId of the
+    // previous and current crates is not equal. As they have different
+    // CrateNum, they are almost guaranteed to not be equal, even if they
+    // define the exact same thing.
+    // Consequently, it is very common that this method is called even when
+    // there's no actual modification to report. As such, it would be a good
+    // idea to find a better name for the method.
+    //
+    // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_hir/def_id/struct.DefId.html
+    fn modification_diagnosis(
+        &self,
+        other: &Self,
+        tcx: &TyCtxt,
+        collector: &mut DiagnosisCollector,
+    ) {
+        collector.add(DiagnosisItem::modification2(
+            tcx.def_path_str(self.def_id()),
+        ));
+    }
+
+    fn addition_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::addition2(tcx.def_path_str(self.def_id())));
+    }
+
+    // This getter allows us to provide a default implementation of other
+    // methods.
+    fn def_id(&self) -> DefId;
+}
+
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
@@ -77,6 +114,18 @@ impl DiagnosisItem {
             path,
             trait_impl,
         }
+    }
+
+    pub(crate) fn removal2(path: String) -> DiagnosisItem {
+        todo!()
+    }
+
+    pub(crate) fn modification2(path: String) -> DiagnosisItem {
+        todo!()
+    }
+
+    pub(crate) fn addition2(path: String) -> DiagnosisItem {
+        todo!()
     }
 
     pub(crate) fn is_removal(&self) -> bool {

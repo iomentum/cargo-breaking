@@ -10,7 +10,9 @@ use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult}
 
 use rustc_span::def_id::DefId;
 
-use crate::diagnosis::DiagnosticGenerator;
+use rustc_middle::ty::TyCtxt;
+
+use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator, DiagnosticGenerator2};
 
 use super::{ItemKind, ItemPath};
 
@@ -105,5 +107,21 @@ pub(crate) struct FnMetadata(pub(crate) DefId);
 impl FnMetadata {
     pub(crate) fn new(id: DefId) -> FnMetadata {
         FnMetadata(id)
+    }
+}
+
+impl DiagnosticGenerator2 for FnMetadata {
+    fn def_id(&self) -> DefId {
+        self.0
+    }
+
+    fn modification_diagnosis(
+        &self,
+        _other: &FnMetadata,
+        _tcx: &TyCtxt,
+        _collector: &mut DiagnosisCollector,
+    ) {
+        // TODO: handle any generic type parameter change as a breaking change
+        // TODO: handle any input and output type change as a breaking change
     }
 }
