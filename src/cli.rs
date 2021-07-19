@@ -106,8 +106,12 @@ impl ProgramInvocation {
 }
 
 fn invoke_cargo(glue_crate: &GlueCrate) -> AnyResult<()> {
+    let executable_path =
+        env::current_exe().context("Failed to get `cargo-breaking` executable path")?;
+
     let status = Command::new("cargo")
-        .env(RUN_WITH_CARGO_ENV_VARIABLE, "1") // TODO: use rustc_wrapper env variable
+        .env(RUN_WITH_CARGO_ENV_VARIABLE, "1")
+        .env("RUSTC_WRAPPER", executable_path)
         .arg("check")
         .arg("--manifest-path")
         .arg(glue_crate.manifest_path())
