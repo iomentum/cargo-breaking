@@ -135,7 +135,7 @@ fn dep_args(crate_name: &str, root_path: &Path) -> Vec<String> {
         "-C", "embed-bitcode=no",
         "-C", "debuginfo=2",
         "--out-dir", format!("{}/deps/{}.d", root_path.display(), crate_name),
-        // "-L", format!("dependency={}/deps", root_path.display()),
+        "-A", "warnings",
         format!("--sysroot={}", sysroot.trim()),
     }
 }
