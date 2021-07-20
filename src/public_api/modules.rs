@@ -1,7 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
-use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator2};
+use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ModMetadata(pub(crate) DefId);
@@ -12,7 +12,7 @@ impl ModMetadata {
     }
 }
 
-impl DiagnosticGenerator2 for ModMetadata {
+impl DiagnosticGenerator for ModMetadata {
     fn def_id(&self) -> DefId {
         self.0
     }

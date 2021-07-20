@@ -1,3 +1,5 @@
+pub(crate) mod utils;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
@@ -11,6 +13,8 @@ use syn::{
     parse::{Parse, ParseStream, Result as ParseResult},
     Token,
 };
+
+use rustc_middle::ty::TyCtxt;
 
 use crate::{
     diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
@@ -27,12 +31,12 @@ impl ApiComparator {
         ApiComparator { previous, current }
     }
 
-    pub fn run(&self) -> ApiCompatibilityDiagnostics {
+    pub fn run(&self, tcx: &TyCtxt) -> ApiCompatibilityDiagnostics {
         let mut collector = DiagnosisCollector::new();
 
-        self.item_removals(&mut collector);
-        self.item_modifications(&mut collector);
-        self.item_additions(&mut collector);
+        self.item_removals(tcx, &mut collector);
+        self.item_modifications(tcx, &mut collector);
+        self.item_additions(tcx, &mut collector);
 
         let mut diags = collector.finalize();
         diags.sort();
@@ -40,40 +44,22 @@ impl ApiComparator {
         ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_removals(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.previous.items(), self.current.items())
-            .for_each(|(path, kind)| kind.removal_diagnosis(path, diagnosis_collector))
+            .for_each(|(path, kind)| kind.removal_diagnosis(tcx, diagnosis_collector))
     }
 
-    fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_modifications(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_modifications(self.previous.items(), self.current.items()).for_each(
             |(path, kind_a, kind_b)| {
-                kind_a.modification_diagnosis(kind_b, path, diagnosis_collector)
+                kind_a.modification_diagnosis(kind_b, tcx, diagnosis_collector)
             },
         )
     }
 
-    fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_additions(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.current.items(), self.previous.items())
-            .for_each(|(path, kind)| kind.addition_diagnosis(path, diagnosis_collector))
-    }
-}
-
-impl Parse for ApiComparator {
-    fn parse(input: ParseStream) -> ParseResult<ApiComparator> {
-        let previous;
-        braced!(previous in input);
-
-        input.parse::<Token![,]>()?;
-
-        let current;
-        braced!(current in input);
-
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>().unwrap();
-        }
-
-        Ok(ApiComparator::new(previous.parse()?, current.parse()?))
+            .for_each(|(path, kind)| kind.addition_diagnosis(tcx, diagnosis_collector))
     }
 }
 
@@ -153,14 +139,6 @@ impl ApiCompatibilityDiagnostics {
 
     fn next_patch(v: &mut Version) {
         v.patch += 1;
-    }
-}
-
-impl Parse for ApiCompatibilityDiagnostics {
-    fn parse(input: ParseStream) -> ParseResult<ApiCompatibilityDiagnostics> {
-        let comparator = input.parse::<ApiComparator>()?;
-
-        Ok(comparator.run())
     }
 }
 

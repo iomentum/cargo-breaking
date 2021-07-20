@@ -11,8 +11,6 @@ use syn::{
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
-use crate::public_api::ItemPath;
-
 pub struct DiagnosisCollector {
     inner: Vec<DiagnosisItem>,
 }
@@ -32,27 +30,8 @@ impl DiagnosisCollector {
 }
 
 pub(crate) trait DiagnosticGenerator {
-    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::removal(path.clone(), None));
-    }
-
-    fn modification_diagnosis(
-        &self,
-        _other: &Self,
-        path: &ItemPath,
-        collector: &mut DiagnosisCollector,
-    ) {
-        collector.add(DiagnosisItem::modification(path.clone(), None));
-    }
-
-    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::addition(path.clone(), None));
-    }
-}
-
-pub(crate) trait DiagnosticGenerator2 {
     fn removal_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::removal2(tcx.def_path_str(self.def_id())));
+        collector.add(DiagnosisItem::removal(self.path(tcx)));
     }
 
     // TODO: this function is supposed to be called each time the DefId of the
@@ -70,62 +49,54 @@ pub(crate) trait DiagnosticGenerator2 {
         tcx: &TyCtxt,
         collector: &mut DiagnosisCollector,
     ) {
-        collector.add(DiagnosisItem::modification2(
-            tcx.def_path_str(self.def_id()),
-        ));
+        collector.add(DiagnosisItem::modification(self.path(tcx)));
     }
 
     fn addition_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::addition2(tcx.def_path_str(self.def_id())));
+        collector.add(DiagnosisItem::addition(self.path(tcx)));
     }
 
     // This getter allows us to provide a default implementation of other
     // methods.
     fn def_id(&self) -> DefId;
+
+    // Do not use def_path_str: it includes the crate from which the item comes
+    // from, which we do not want to print. Use this method instead.
+    fn path(&self, tcx: &TyCtxt) -> String {
+        tcx.def_path(self.def_id()).to_string_no_crate_verbose()
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
-    path: ItemPath,
-    trait_impl: Option<Ident>,
+    path: String,
+    trait_impl: Option<String>,
 }
 
 impl DiagnosisItem {
-    pub(crate) fn removal(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn removal(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Removal,
             path,
-            trait_impl,
+            trait_impl: None,
         }
     }
 
-    pub(crate) fn modification(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn modification(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Modification,
             path,
-            trait_impl,
+            trait_impl: None,
         }
     }
 
-    pub(crate) fn addition(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn addition(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Addition,
             path,
-            trait_impl,
+            trait_impl: None,
         }
-    }
-
-    pub(crate) fn removal2(path: String) -> DiagnosisItem {
-        todo!()
-    }
-
-    pub(crate) fn modification2(path: String) -> DiagnosisItem {
-        todo!()
-    }
-
-    pub(crate) fn addition2(path: String) -> DiagnosisItem {
-        todo!()
     }
 
     pub(crate) fn is_removal(&self) -> bool {
@@ -153,29 +124,6 @@ impl Display for DiagnosisItem {
     }
 }
 
-#[cfg(test)]
-impl Parse for DiagnosisItem {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItem> {
-        let kind = input.parse()?;
-        let path = input.parse()?;
-
-        let trait_impl = if input.peek(Token![:]) {
-            input.parse::<Token![:]>().unwrap();
-            input.parse::<Token![impl]>().unwrap();
-
-            Some(input.parse()?)
-        } else {
-            None
-        };
-
-        Ok(DiagnosisItem {
-            path,
-            trait_impl,
-            kind,
-        })
-    }
-}
-
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialOrd, PartialEq)]
 enum DiagnosisItemKind {
     Removal,
@@ -191,26 +139,6 @@ impl Display for DiagnosisItemKind {
             DiagnosisItemKind::Addition => '+',
         }
         .fmt(f)
-    }
-}
-
-#[cfg(test)]
-impl Parse for DiagnosisItemKind {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItemKind> {
-        if input.peek(Token![-]) {
-            input.parse::<Token![-]>().unwrap();
-            Ok(DiagnosisItemKind::Removal)
-        } else if input.peek(Token![<]) {
-            input.parse::<Token![<]>().unwrap();
-            input.parse::<Token![>]>().unwrap();
-
-            Ok(DiagnosisItemKind::Modification)
-        } else if input.peek(Token![+]) {
-            input.parse::<Token![+]>().unwrap();
-            Ok(DiagnosisItemKind::Addition)
-        } else {
-            Err(input.error("Excepted `-`, `<>` or `+`"))
-        }
     }
 }
 

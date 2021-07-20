@@ -1,11 +1,5 @@
 mod functions;
-mod imports;
-mod methods;
 mod modules;
-mod trait_defs;
-mod trait_impls;
-mod types;
-mod utils;
 
 use std::{
     collections::HashMap,
@@ -21,7 +15,7 @@ use syn::{
 
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
-use rustc_span::def_id::DefId;
+use rustc_span::def_id::{CrateNum, DefId};
 
 #[cfg(test)]
 use syn::Token;
@@ -33,236 +27,10 @@ use crate::{
     diagnosis::{DiagnosisCollector, DiagnosticGenerator},
 };
 
-use self::{
-    functions::{FnMetadata, FnPrototype, FnVisitor},
-    imports::PathResolver,
-    methods::{MethodMetadata, MethodVisitor},
-    modules::ModMetadata,
-    trait_defs::{TraitDefMetadata, TraitDefVisitor},
-    trait_impls::TraitImplVisitor,
-    types::{TypeMetadata, TypeVisitor},
-};
+use self::{functions::FnMetadata, modules::ModMetadata};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PublicApi {
-    items: HashMap<ItemPath, ItemKind>,
-}
-
-impl PublicApi {
-    pub(crate) fn from_ast(program: &CrateAst) -> PublicApi {
-        let resolver = PathResolver::new(program);
-
-        let mut type_visitor = TypeVisitor::new();
-        type_visitor.visit_file(program.ast());
-
-        let mut method_visitor = MethodVisitor::new(type_visitor.types(), &resolver);
-        method_visitor.visit_file(program.ast());
-
-        let mut fn_visitor = FnVisitor::new(method_visitor.items());
-        fn_visitor.visit_file(program.ast());
-
-        let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items(), &resolver);
-        trait_impl_visitor.visit_file(program.ast());
-
-        let mut trait_def_visitor = TraitDefVisitor::new(trait_impl_visitor.items(), &resolver);
-        trait_def_visitor.visit_file(program.ast());
-
-        let items = trait_def_visitor.items();
-
-        PublicApi { items }
-    }
-
-    pub(crate) fn items(&self) -> &HashMap<ItemPath, ItemKind> {
-        &self.items
-    }
-}
-
-impl Parse for PublicApi {
-    fn parse(input: ParseStream) -> ParseResult<PublicApi> {
-        let ast = input.parse()?;
-        Ok(PublicApi::from_ast(&ast))
-    }
-}
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct ItemPath {
-    path: Vec<Ident>,
-}
-
-impl ItemPath {
-    fn new(mut path: Vec<Ident>, last: Ident) -> ItemPath {
-        path.push(last);
-        ItemPath { path }
-    }
-
-    fn concat_both(left: Vec<Ident>, right: Vec<Ident>) -> ItemPath {
-        let path = left.tap_mut(|v| v.extend(right));
-        ItemPath { path }
-    }
-
-    fn extend(initial: ItemPath, last: Ident) -> ItemPath {
-        initial.tap_mut(|initial| initial.path.push(last))
-    }
-}
-
-impl Display for ItemPath {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        if let Some(first) = self.path.first() {
-            write!(f, "{}", first)?;
-
-            self.path
-                .iter()
-                .skip(1)
-                .try_for_each(|segment| write!(f, "::{}", segment))?;
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-impl Parse for ItemPath {
-    fn parse(input: ParseStream) -> ParseResult<ItemPath> {
-        let first_ident = input.parse::<Ident>()?;
-
-        let mut path = vec![first_ident];
-
-        while input.peek(Token![::]) {
-            input.parse::<Token![::]>().unwrap();
-            path.push(input.parse()?);
-        }
-
-        let last_segment = path.pop().unwrap();
-        Ok(ItemPath::new(path, last_segment))
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ItemKind {
-    Fn(FnPrototype),
-    Type(TypeMetadata),
-    Method(MethodMetadata),
-    TraitDef(TraitDefMetadata),
-}
-
-impl ItemKind {
-    pub(crate) fn as_type_mut(&mut self) -> Option<&mut TypeMetadata> {
-        if let Self::Type(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(test)]
-impl ItemKind {
-    fn as_type(&self) -> Option<&TypeMetadata> {
-        if let ItemKind::Type(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
-impl DiagnosticGenerator for ItemKind {
-    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        match self {
-            ItemKind::Fn(f) => f.removal_diagnosis(path, collector),
-            ItemKind::Type(t) => t.removal_diagnosis(path, collector),
-            ItemKind::Method(m) => m.removal_diagnosis(path, collector),
-            ItemKind::TraitDef(t) => t.removal_diagnosis(path, collector),
-        }
-    }
-
-    fn modification_diagnosis(
-        &self,
-        other: &Self,
-        path: &ItemPath,
-        collector: &mut DiagnosisCollector,
-    ) {
-        match (self, other) {
-            (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path, collector),
-            (ItemKind::Type(ta), ItemKind::Type(tb)) => {
-                ta.modification_diagnosis(tb, path, collector)
-            }
-            (ItemKind::Method(ma), ItemKind::Method(mb)) => {
-                ma.modification_diagnosis(mb, path, collector)
-            }
-            (ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => {
-                ta.modification_diagnosis(tb, path, collector)
-            }
-            (a, b) => {
-                a.removal_diagnosis(path, collector);
-                b.addition_diagnosis(path, collector);
-            }
-        }
-    }
-
-    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        match self {
-            ItemKind::Fn(f) => f.addition_diagnosis(path, collector),
-            ItemKind::Type(t) => t.addition_diagnosis(path, collector),
-            ItemKind::Method(m) => m.addition_diagnosis(path, collector),
-            ItemKind::TraitDef(t) => t.addition_diagnosis(path, collector),
-        }
-    }
-}
-
-#[cfg(test)]
-impl Parse for ItemKind {
-    fn parse(input: ParseStream) -> ParseResult<ItemKind> {
-        input
-            .parse::<FnPrototype>()
-            .map(Into::into)
-            .or_else(|mut e| {
-                input.parse::<TypeMetadata>().map(Into::into).map_err(|e_| {
-                    e.combine(e_);
-                    e
-                })
-            })
-            .or_else(|mut e| {
-                input
-                    .parse::<MethodMetadata>()
-                    .map(Into::into)
-                    .map_err(|e_| {
-                        e.combine(e_);
-                        e
-                    })
-            })
-            .or_else(|mut e| {
-                input
-                    .parse::<TraitDefMetadata>()
-                    .map(Into::into)
-                    .map_err(|e_| {
-                        e.combine(e_);
-                        e
-                    })
-            })
-    }
-}
-
-impl From<FnPrototype> for ItemKind {
-    fn from(item: FnPrototype) -> Self {
-        ItemKind::Fn(item)
-    }
-}
-
-impl From<TypeMetadata> for ItemKind {
-    fn from(item: TypeMetadata) -> Self {
-        ItemKind::Type(item)
-    }
-}
-
-impl From<MethodMetadata> for ItemKind {
-    fn from(v: MethodMetadata) -> ItemKind {
-        ItemKind::Method(v)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct PublicApi2 {
     // TODO: find a better way to represent item path than a String
 
     // TODO: for now we suppose that two public items have different path. This
@@ -271,29 +39,31 @@ struct PublicApi2 {
     items: HashMap<String, ApiItem>,
 }
 
-impl PublicApi2 {
-    pub(crate) fn from_crate(tcx: &TyCtxt, crate_root: DefId) -> PublicApi2 {
-        let mut api = PublicApi2::empty();
+impl PublicApi {
+    pub(crate) fn from_crate(tcx: &TyCtxt, crate_root: DefId) -> PublicApi {
+        let mut api = PublicApi::empty();
         api.visit_pub_mod(tcx, crate_root);
         api
     }
 
-    fn empty() -> PublicApi2 {
-        PublicApi2 {
+    pub(crate) fn items(&self) -> &HashMap<String, ApiItem> {
+        &self.items
+    }
+
+    fn empty() -> PublicApi {
+        PublicApi {
             items: HashMap::new(),
         }
     }
 
     fn visit_pub_mod(&mut self, tcx: &TyCtxt, def_id: DefId) {
-        let mod_path = tcx.def_path_str(def_id);
-        self.add_item(mod_path, ModMetadata::new(def_id));
+        self.add_item(tcx, def_id, ModMetadata::new(def_id));
 
         for item in tcx.item_children(def_id) {
             match &item.vis {
                 Visibility::Public => {}
                 _ => continue,
             }
-
             let (def_kind, def_id) = match &item.res {
                 Res::Def(def_kind, def_id) => (def_kind, def_id),
                 _ => continue,
@@ -302,14 +72,20 @@ impl PublicApi2 {
             match def_kind {
                 DefKind::Mod => self.visit_pub_mod(tcx, *def_id),
 
-                DefKind::Fn => self.add_item(tcx.def_path_str(*def_id), FnMetadata::new(*def_id)),
+                DefKind::Fn => self.add_item(tcx, *def_id, FnMetadata::new(*def_id)),
 
                 _ => continue,
             }
         }
     }
 
-    fn add_item(&mut self, path: String, item: impl Into<ApiItem>) {
+    fn add_item(&mut self, tcx: &TyCtxt, id: DefId, item: impl Into<ApiItem>) {
+        let path = tcx.def_path(id).to_string_no_crate_verbose();
+
+        if path.is_empty() {
+            return;
+        }
+
         let tmp = self.items.insert(path, item.into());
 
         assert!(
@@ -320,7 +96,7 @@ impl PublicApi2 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum ApiItem {
+pub(crate) enum ApiItem {
     Fn(FnMetadata),
     Mod(ModMetadata),
 }
@@ -334,6 +110,17 @@ impl From<ModMetadata> for ApiItem {
 impl From<FnMetadata> for ApiItem {
     fn from(v: FnMetadata) -> ApiItem {
         ApiItem::Fn(v)
+    }
+}
+
+impl DiagnosticGenerator for ApiItem {
+    // TODO: this is horribly incorrect.
+
+    fn def_id(&self) -> DefId {
+        match self {
+            ApiItem::Fn(f) => f.def_id(),
+            ApiItem::Mod(m) => m.def_id(),
+        }
     }
 }
 
