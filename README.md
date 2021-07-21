@@ -1,5 +1,13 @@
 # `cargo-breaking`
 
+<div style="text-align: center;" align="center">
+<img src="https://raw.githubusercontent.com/iomentum/cargo-breaking/main/logo-full.svg" width="500" />
+<br/>
+
+Logo is provided by Morgane Gaillard (<a href="https://github.com/Arlune">@Arlune</a>) under the MPL license.
+</div>
+
+
 `cargo-breaking` compares a crate's public API between two different branches,
 shows what changed, and suggests the next version according to [semver][semver].
 
