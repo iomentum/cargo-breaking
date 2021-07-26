@@ -1,13 +1,5 @@
 use std::collections::HashMap;
 
-use syn::{
-    visit::{self, Visit},
-    Ident, ItemFn, ItemMod, Signature, Visibility,
-};
-
-#[cfg(test)]
-use syn::parse::{Error as ParseError, Parse, ParseStream, Result as ParseResult};
-
 use rustc_span::def_id::DefId;
 
 use rustc_middle::ty::TyCtxt;

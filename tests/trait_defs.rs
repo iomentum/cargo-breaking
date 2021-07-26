@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn addition_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub trait A {}
@@ -15,7 +14,7 @@ fn addition_simple() {
 
 #[test]
 fn trait_item_addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub trait A {}
         },
@@ -29,7 +28,7 @@ fn trait_item_addition() {
 
 #[test]
 fn trait_item_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub trait A {
                 type B = u8;
@@ -47,7 +46,7 @@ fn trait_item_modification() {
 
 #[test]
 fn trait_item_removal() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub trait A {
                 type B;
@@ -63,7 +62,7 @@ fn trait_item_removal() {
 
 #[test]
 fn trait_item_kind_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub trait A {
                 type B;
@@ -81,7 +80,7 @@ fn trait_item_kind_modification() {
 
 #[test]
 fn in_private_module() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             mod a {
@@ -95,7 +94,7 @@ fn in_private_module() {
 
 #[test]
 fn in_public_module() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub mod a {}
         },

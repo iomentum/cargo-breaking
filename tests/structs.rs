@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn private_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             struct A;
@@ -15,7 +14,7 @@ fn private_is_not_reported() {
 
 #[test]
 fn addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub struct A;
@@ -27,7 +26,7 @@ fn addition() {
 
 #[test]
 fn removal() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct B;
         },
@@ -39,7 +38,7 @@ fn removal() {
 
 #[test]
 fn new_public_field_tupled_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct C;
         },
@@ -53,7 +52,7 @@ fn new_public_field_tupled_is_modification() {
 
 #[test]
 fn new_private_field_tupled_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct C();
         },
@@ -67,7 +66,7 @@ fn new_private_field_tupled_is_modification() {
 
 #[test]
 fn new_public_field_named_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct D {}
         },
@@ -83,7 +82,7 @@ fn new_public_field_named_is_modification() {
 
 #[test]
 fn new_private_field_named_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct D {
                 a: b,
@@ -102,7 +101,7 @@ fn new_private_field_named_is_not_reported() {
 
 #[test]
 fn public_named_field_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A {
                 pub a: u8,
@@ -120,7 +119,7 @@ fn public_named_field_modification() {
 
 #[test]
 fn public_unnamed_field_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A(pub u8);
         },
@@ -134,7 +133,7 @@ fn public_unnamed_field_modification() {
 
 #[test]
 fn public_named_field_removal_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A {
                 pub a: u8,
@@ -150,7 +149,7 @@ fn public_named_field_removal_is_modification() {
 
 #[test]
 fn public_unnamed_field_removal_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A(pub u8);
         },
@@ -164,7 +163,7 @@ fn public_unnamed_field_removal_is_modification() {
 
 #[test]
 fn generic_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct E;
         },

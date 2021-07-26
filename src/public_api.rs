@@ -7,25 +7,13 @@ use std::{
     hash::Hash,
 };
 
-use syn::{
-    parse::{Parse, ParseStream, Result as ParseResult},
-    visit::Visit,
-    Ident,
-};
-
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
 use rustc_span::def_id::{CrateNum, DefId};
 
-#[cfg(test)]
-use syn::Token;
-
 use tap::Tap;
 
-use crate::{
-    ast::CrateAst,
-    diagnosis::{DiagnosisCollector, DiagnosticGenerator},
-};
+use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
 
 use self::{functions::FnMetadata, modules::ModMetadata};
 

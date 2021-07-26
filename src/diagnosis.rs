@@ -1,13 +1,5 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use syn::Ident;
-
-#[cfg(test)]
-use syn::{
-    parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
-};
-
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 

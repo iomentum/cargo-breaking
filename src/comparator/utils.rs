@@ -15,19 +15,20 @@ use crate::{glue::MockedCompiler, ApiCompatibilityDiagnostics};
 
 const GLUE_CODE: &str = "extern crate previous; extern crate current;";
 
+#[macro_export]
 macro_rules! compatibility_diagnosis {
     (
         { $( $previous_tt:tt )* },
         { $( $current_tt:tt )* } $(,)?
-    ) => {
-        let previous_code = stringify!( $( $previous )* );
-        let current_code = stringify!( $( $current )* );
+    ) => {{
+        let previous_code = stringify!( $( $previous_tt )* );
+        let current_code = stringify!( $( $current_tt )* );
 
-        get_diff_from_sources(previous_code, current_code)
-    };
+        $crate::get_diff_from_sources(previous_code, current_code).unwrap()
+    }};
 }
 
-pub(crate) fn get_diff_from_sources(
+pub fn get_diff_from_sources(
     previous: &'static str,
     current: &'static str,
 ) -> AnyResult<ApiCompatibilityDiagnostics> {

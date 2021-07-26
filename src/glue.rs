@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result as AnyResult};
-use syn::Error as SynError;
 
 use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_errors::ErrorReported;
@@ -15,9 +14,7 @@ use rustc_middle::{middle::cstore::ExternCrateSource, ty::TyCtxt};
 use rustc_session::config::Input;
 use rustc_span::{def_id::CrateNum, FileName};
 
-use crate::{
-    ast::CrateAst, comparator::ApiComparator, public_api::PublicApi, ApiCompatibilityDiagnostics,
-};
+use crate::{comparator::ApiComparator, public_api::PublicApi, ApiCompatibilityDiagnostics};
 
 fn run_compiler(mut args: Vec<String>) -> Result<(), ErrorReported> {
     let out = Command::new("rustc")

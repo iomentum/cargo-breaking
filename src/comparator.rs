@@ -8,12 +8,6 @@ use std::{
 
 use semver::{BuildMetadata, Prerelease, Version};
 
-use syn::{
-    braced,
-    parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
-};
-
 use rustc_middle::ty::TyCtxt;
 
 use crate::{
@@ -167,8 +161,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use syn::parse_quote;
-
     use super::*;
 
     fn addition_diagnosis() -> DiagnosisItem {

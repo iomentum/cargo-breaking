@@ -49,7 +49,6 @@ dependencies = [
  "clap",
  "git2",
  "semver",
- "syn",
  "tap",
  "tempfile",
 ]

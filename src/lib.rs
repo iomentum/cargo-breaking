@@ -9,7 +9,6 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-mod ast;
 mod cli;
 mod comparator;
 mod diagnosis;
@@ -27,6 +26,8 @@ use crate::{
     comparator::ApiComparator,
     git::{CrateRepo, GitBackend},
 };
+
+pub use comparator::utils::get_diff_from_sources;
 
 pub fn run() -> AnyResult<()> {
     /*
