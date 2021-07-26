@@ -172,15 +172,15 @@ mod tests {
     use super::*;
 
     fn addition_diagnosis() -> DiagnosisItem {
-        parse_quote! { + foo::bar::baz }
+        DiagnosisItem::addition("foo::bar::baz".to_owned())
     }
 
     fn modification_diagnosis() -> DiagnosisItem {
-        parse_quote! { <> foo::bar::baz }
+        DiagnosisItem::modification("foo::bar::baz".to_owned())
     }
 
     fn removal_diagnosis() -> DiagnosisItem {
-        parse_quote! { - foo::bar::baz }
+        DiagnosisItem::removal("foo::bar::baz".to_owned())
     }
 
     macro_rules! compatibility_diag {
@@ -211,53 +211,6 @@ mod tests {
 
             let $name = $name;
         };
-    }
-
-    mod api_comparator {
-        use super::*;
-
-        #[test]
-        fn removal() {
-            let comparator: ApiComparator = parse_quote! {
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: usize) {}
-                        }
-                    }
-                },
-                {},
-            };
-
-            let left = comparator.run();
-            compatibility_diag!(right: removal);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn modification() {
-            let comparator: ApiComparator = parse_quote! {
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: usize) {}
-                        }
-                    }
-                },
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: u32) -> u32 {}
-                        }
-                    }
-                },
-            };
-            let left = comparator.run();
-            compatibility_diag!(right: modification);
-
-            assert_eq!(left, right);
-        }
     }
 
     mod api_compatibility_diagnostic {
