@@ -16,6 +16,12 @@ jobs:
 
     - uses: Swatinem/rust-cache@v1
 
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        components: rustfmt, clippy
+
     - name: cargo test
       uses: actions-rs/cargo@v1
       with:
@@ -44,9 +50,7 @@ jobs:
 
       - name: cargo test
         uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace
+      - run: cargo +nightly test --workspace
 
   test-windows:
     runs-on: windows-latest
