@@ -1,18 +1,14 @@
 use std::{
-    collections::{HashMap, HashSet},
-    fs,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
 };
 
-use anyhow::{anyhow, Context, Result as AnyResult};
-use tap::Tap;
+use anyhow::{anyhow, ensure, Context, Result as AnyResult};
 use tempfile::TempDir;
 
 use rustc_driver::{Callbacks, RunCompiler};
 use rustc_interface::Config;
-use rustc_session::config::{Input, Options};
+use rustc_session::config::Input;
 use rustc_span::FileName;
 
 use crate::{glue::MockedCompiler, ApiCompatibilityDiagnostics};
@@ -37,78 +33,18 @@ pub(crate) fn get_diff_from_sources(
 ) -> AnyResult<ApiCompatibilityDiagnostics> {
     let root_container = create_temp_dir().context("Failed to create temporary code directory")?;
 
-    let previous_artifacts = compile_previous_code(root_container.path(), previous.to_owned())
-        .context("Failed to compile previous version")?;
+    let previous_crate =
+        CompilationUnit::previous(root_container.path()).with_code(previous.to_owned());
+    let current_crate =
+        CompilationUnit::current(root_container.path()).with_code(current.to_owned());
 
-    let current_artifacts = compile_current_code(root_container.path(), current.to_owned())
-        .context("Failed to compile current version")?;
-
-    compile_glue_code(
-        root_container.path(),
-        &previous_artifacts,
-        &current_artifacts,
-    )
-    .context("Failed to compile glue crate")
+    CompilationUnit::glue(root_container.path(), previous_crate, current_crate)
+        .diff()
+        .context("Failed to build project")
 }
 
 fn create_temp_dir() -> AnyResult<TempDir> {
     tempfile::tempdir().context("Failed to create temporary directory")
-}
-
-fn compile_previous_code(root_path: &Path, code: String) -> AnyResult<PathBuf> {
-    create_build_directory("previous", root_path)?;
-    let args = dep_args("previous", root_path);
-
-    let mut compiler = DepCompiler {
-        code,
-        file_name: "previous".to_string(),
-    };
-
-    RunCompiler::new(args.as_slice(), &mut compiler)
-        .run()
-        .map(|()| rmeta_path(root_path, "previous"))
-        .map_err(|_| anyhow!("Failed to compile crate"))
-}
-
-fn compile_current_code(root_path: &Path, code: String) -> AnyResult<PathBuf> {
-    create_build_directory("current", root_path)?;
-    let args = dep_args("current", root_path);
-
-    let mut compiler = DepCompiler {
-        code,
-        file_name: "current".to_string(),
-    };
-
-    RunCompiler::new(args.as_slice(), &mut compiler)
-        .run()
-        .map(|()| rmeta_path(root_path, "current"))
-        .map_err(|_| anyhow!("Failed to compile crate"))
-}
-
-fn compile_glue_code(
-    root_path: &Path,
-    previous_artifacts: &Path,
-    current_artifacts: &Path,
-) -> AnyResult<ApiCompatibilityDiagnostics> {
-    create_build_directory("glue", root_path)?;
-    let args = glue_args(root_path, &previous_artifacts, &current_artifacts);
-
-    let mut compiler = MockedCompiler::new("glue".to_owned(), GLUE_CODE.to_owned());
-
-    RunCompiler::new(args.as_slice(), &mut compiler)
-        .run()
-        .map_err(|_| anyhow!("Failed to compile crate"))?;
-
-    compiler.finalize()
-}
-
-fn create_build_directory(crate_name: &str, root_path: &Path) -> AnyResult<()> {
-    let mut p = root_path.to_path_buf();
-    p.push("deps");
-    p.push(format!("{}.d", crate_name));
-
-    fs::create_dir_all(&p)
-        .with_context(|| format!("Failed to create dependency directory for `{}`", crate_name))
 }
 
 macro_rules! mk_string_vec {
@@ -117,49 +53,154 @@ macro_rules! mk_string_vec {
     };
 }
 
-fn dep_args(crate_name: &str, root_path: &Path) -> Vec<String> {
-    let out = Command::new("rustc")
-        .arg("--print=sysroot")
-        .current_dir(".")
-        .output()
-        .unwrap();
-    let sysroot = String::from_utf8(out.stdout).unwrap();
+struct CompilationUnit<'a> {
+    code: String,
+    crate_name: String,
+    dependencies: Vec<CompilationUnit<'a>>,
+    diags: Option<ApiCompatibilityDiagnostics>,
+    is_final: bool,
+    root_path: &'a Path,
+}
 
-    mk_string_vec! {
-        "rustc",
-        "--crate-name", crate_name,
-        "--edition=2018",
-        "",
-        "--crate-type", "lib",
-        "--emit=metadata",
-        "-C", "embed-bitcode=no",
-        "--out-dir", format!("{}/deps/{}.d", root_path.display(), crate_name),
-        "-A", "warnings",
-        format!("--sysroot={}", sysroot.trim()),
+impl<'a> CompilationUnit<'a> {
+    fn previous(root_path: &'a Path) -> CompilationUnit<'a> {
+        CompilationUnit::dependency(root_path, "previous".to_owned())
     }
-}
 
-fn glue_args(root_path: &Path, previous_artifacts: &Path, current_artifacts: &Path) -> Vec<String> {
-    let mut args = dep_args("glue", root_path);
+    fn current(root_path: &'a Path) -> CompilationUnit<'a> {
+        CompilationUnit::dependency(root_path, "current".to_owned())
+    }
 
-    let to_add = [
-        "--extern".to_owned(),
-        format!("previous={}", previous_artifacts.display()),
-        "--extern".to_owned(),
-        format!("current={}", current_artifacts.display()),
-    ];
+    fn glue(
+        root_path: &'a Path,
+        previous_crate: CompilationUnit<'a>,
+        current_crate: CompilationUnit<'a>,
+    ) -> CompilationUnit<'a> {
+        CompilationUnit {
+            code: "extern crate previous; extern crate current;".to_owned(),
+            crate_name: "glue".to_owned(),
+            dependencies: vec![previous_crate, current_crate],
+            diags: None,
+            is_final: true,
+            root_path,
+        }
+    }
 
-    args.extend(to_add);
+    fn dependency(root_path: &'a Path, crate_name: String) -> CompilationUnit<'a> {
+        CompilationUnit {
+            code: String::new(),
+            crate_name,
+            dependencies: Vec::new(),
+            diags: None,
+            is_final: false,
+            root_path,
+        }
+    }
 
-    args
-}
+    fn with_code(mut self, code: String) -> CompilationUnit<'a> {
+        self.code = code;
+        self
+    }
 
-fn rmeta_path(root_path: &Path, crate_name: &str) -> PathBuf {
-    root_path
-        .to_path_buf()
-        .tap_mut(|p| p.push("deps"))
-        .tap_mut(|p| p.push(format!("{}.d", crate_name)))
-        .tap_mut(|p| p.push(format!("lib{}.rmeta", crate_name)))
+    fn build_artifacts(&self) -> AnyResult<PathBuf> {
+        ensure!(
+            !self.is_final,
+            "Cannot generate the build artifacts of the glue crate"
+        );
+
+        let dependencies_artifacts = self
+            .dependencies
+            .iter()
+            .map(|dep| dep.build_artifacts().map(|path| (&dep.crate_name, path)))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let dependencies_artifacts = dependencies_artifacts
+            .iter()
+            .map(|(n, p)| (n.as_str(), p.as_path()));
+
+        let args = self.cli_args(dependencies_artifacts);
+
+        let mut compiler = DepCompiler {
+            file_name: self.crate_name.clone(),
+            code: self.code.clone(),
+        };
+
+        RunCompiler::new(args.as_slice(), &mut compiler)
+            .run()
+            .map(|()| self.artifacts_path())
+            .map_err(|_| anyhow!("Failed to compile crate"))
+    }
+
+    fn diff(self) -> AnyResult<ApiCompatibilityDiagnostics> {
+        ensure!(self.is_final, "Cannot get the diff of a non-glue crate");
+
+        let dependencies_artifacts = self
+            .dependencies
+            .iter()
+            .map(|dep| {
+                dep.build_artifacts()
+                    .map(|path| (dep.crate_name.clone(), path))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let dependencies_artifacts = dependencies_artifacts
+            .iter()
+            .map(|(n, p)| (n.as_str(), p.as_path()));
+
+        let args = self.cli_args(dependencies_artifacts);
+
+        let mut compiler = MockedCompiler::new("glue".to_owned(), GLUE_CODE.to_owned());
+
+        RunCompiler::new(args.as_slice(), &mut compiler)
+            .run()
+            .map_err(|_| anyhow!("Failed to compile crate"))?;
+
+        compiler.finalize().context("Failed to collect diagnosis")
+    }
+
+    fn cli_args<'b>(&self, deps: impl Iterator<Item = (&'b str, &'b Path)>) -> Vec<String> {
+        let mut args = self.common_args();
+
+        deps.into_iter().for_each(|(name, path)| {
+            args.extend([
+                "--extern".to_owned(),
+                format!("{}={}", name, path.display()),
+            ])
+        });
+
+        args
+    }
+
+    fn common_args(&self) -> Vec<String> {
+        let out = Command::new("rustc")
+            .arg("--print=sysroot")
+            .current_dir(".")
+            .output()
+            .unwrap();
+        let sysroot = String::from_utf8(out.stdout).unwrap();
+
+        mk_string_vec! {
+            "rustc",
+            "--crate-name", self.crate_name,
+            "--edition=2018",
+            "",
+            "--crate-type", "lib",
+            "--emit=metadata",
+            "-C", "embed-bitcode=no",
+            "--out-dir", format!("{}/deps/{}.d", self.root_path.display(), self.crate_name),
+            "-A", "warnings",
+            format!("--sysroot={}", sysroot.trim()),
+        }
+    }
+
+    fn artifacts_path(&self) -> PathBuf {
+        let mut path = self.root_path.to_path_buf();
+        path.push("deps");
+        path.push(format!("{}.d", self.crate_name));
+        path.push(format!("lib{}.rmeta", self.crate_name));
+
+        path
+    }
 }
 
 struct DepCompiler {
