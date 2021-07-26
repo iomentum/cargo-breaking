@@ -23,10 +23,10 @@ jobs:
         components: rustfmt, clippy
 
     - name: cargo test
-      run: cargo +nightly test --workspace
+      run: cargo +nightly-2021-07-26 test --workspace
 
     - name: rustfmt
-      run: cargo +nightly fmt -- --check
+      run: cargo +nightly-2021-07-26 fmt -- --check
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
@@ -45,12 +45,12 @@ jobs:
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2021-07-26
           components: rustfmt, clippy
 
       - name: cargo test
         uses: actions-rs/cargo@v1
-      - run: cargo +nightly test --workspace
+      - run: cargo +nightly-2021-07-26 test --workspace
 
   test-windows:
     runs-on: windows-latest
@@ -63,9 +63,9 @@ jobs:
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2021-07-26
           components: rustfmt, clippy
 
       - name: cargo test
         uses: actions-rs/cargo@v1
-      - run: cargo +nightly test --workspace
+      - run: cargo +nightly-2021-07-26 test --workspace
