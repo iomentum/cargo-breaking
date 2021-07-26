@@ -23,16 +23,10 @@ jobs:
         components: rustfmt, clippy
 
     - name: cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: --workspace
+      run: cargo +nightly test --workspace
 
     - name: rustfmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo +nightly fmt -- --check
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
@@ -48,6 +42,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+
       - name: cargo test
         uses: actions-rs/cargo@v1
       - run: cargo +nightly test --workspace
@@ -60,8 +60,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+
       - name: cargo test
         uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace
+      - run: cargo +nightly test --workspace
