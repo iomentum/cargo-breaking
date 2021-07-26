@@ -25,14 +25,16 @@ jobs:
     - name: cargo-test
       uses: actions-rs/cargo@v1
         with:
-          command: cargo
-          args: +nightly-2021-07-26 test --workspace
+          toolchain: nightly-2021-07-26
+          command: test
+          args: --workspace
 
     - name: cargo-fmt
       uses: actions-rs/cargo@v1
         with:
-          command: cargo
-          args: +nightly-2021-07-26 fmt -- --check
+          toolchain: nightly-2021-07-26
+          command: fmt
+          args: --all -- --check
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
@@ -57,8 +59,9 @@ jobs:
       - name: cargo-test
         uses: actions-rs/cargo@v1
           with:
-            command: cargo
-            args: +nightly-2021-07-26 test --workspace
+            command: test
+            toolchain: nightly-2021-07-26
+            args: --workspace
 
   test-windows:
     runs-on: windows-latest
@@ -77,5 +80,6 @@ jobs:
       - name: cargo-test
         uses: actions-rs/cargo@v1
           with:
+            toolchain: nightly-2021-07-26
             command: cargo
-            args: +nightly-2021-07-26 test --workspace
+            args: --workspace
