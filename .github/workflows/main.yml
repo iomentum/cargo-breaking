@@ -18,11 +18,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: cargo test
-        uses: actions-rs/cargo@v1
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
         with:
-          command: test
-          args: --workspace
+          toolchain: nightly-2021-07-26
+          components: rustfmt, clippy
+
+      - name: cargo test
+        run: cargo +nightly-2021-07-26 test --workspace
 
   test-osx:
     runs-on: macos-latest
@@ -32,11 +35,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: cargo test
-        uses: actions-rs/cargo@v1
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
         with:
-          command: test
-          args: --workspace
+          toolchain: nightly-2021-07-26
+          components: rustfmt, clippy
+
+      - name: cargo test
+        run: cargo +nightly-2021-07-26 test --workspace
 
   test-windows:
     runs-on: windows-latest
@@ -46,8 +52,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: cargo test
-        uses: actions-rs/cargo@v1
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
         with:
-          command: test
-          args: --workspace
+          toolchain: nightly-2021-07-26
+          components: rustfmt, clippy
+
+      - name: cargo test
+        run: cargo +nightly-2021-07-26 test --workspace
