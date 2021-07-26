@@ -62,4 +62,4 @@ jobs:
           toolchain: nightly-2021-07-26
           components: rustfmt, clippy
 
-      - run: cargo nightly-2021-07-26 test --workspace
+      - run: cargo +nightly-2021-07-26 test --workspace
