@@ -120,9 +120,9 @@ impl Parse for DiagnosisItem {
         };
 
         Ok(DiagnosisItem {
+            kind,
             path,
             trait_impl,
-            kind,
         })
     }
 }

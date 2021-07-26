@@ -72,7 +72,7 @@ impl<'a, 'ast> Visit<'ast> for TraitImplVisitor<'a> {
 
     fn visit_item_impl(&mut self, impl_: &'ast ItemImpl) {
         let (type_name, trait_impl_metadata) =
-            match extract_impl_trait_metadata(impl_, &self.resolver, self.path.as_slice()) {
+            match extract_impl_trait_metadata(impl_, self.resolver, self.path.as_slice()) {
                 Some(value) => value,
                 None => return,
             };

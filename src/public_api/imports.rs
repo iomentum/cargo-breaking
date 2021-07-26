@@ -523,6 +523,8 @@ mod tests {
         assert_eq!(left, right);
     }
 
+    // Yes I do want to name my variable foo or baz.
+    #[allow(clippy::blacklisted_name)]
     #[test]
     fn handles_super_anywhere_in_path() {
         let resolver: PathResolver = parse_quote! {
@@ -537,7 +539,7 @@ mod tests {
         let bar: Ident = parse_quote! { bar };
         let baz: Ident = parse_quote! { Baz };
 
-        let tmp = [foo.clone(), bar.clone(), baz.clone()];
+        let tmp = [foo.clone(), bar, baz];
 
         let left = resolver.resolve(&[foo], &parse_quote! { bar::super::bar::Baz });
         let right = Some(&tmp as &_);
