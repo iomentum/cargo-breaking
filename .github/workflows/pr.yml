@@ -24,22 +24,23 @@ jobs:
 
     - name: cargo-test
       uses: actions-rs/cargo@v1
-        with:
-          toolchain: nightly-2021-07-26
-          command: test
-          args: --workspace
+      with:
+        toolchain: nightly-2021-07-26
+        command: test
+        args: --workspace
 
     - name: cargo-fmt
       uses: actions-rs/cargo@v1
-        with:
-          toolchain: nightly-2021-07-26
-          command: fmt
-          args: --all -- --check
+      with:
+        toolchain: nightly-2021-07-26
+        command: fmt
+        args: --all -- --check
 
     - name: clippy
       uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        toolchain: nightly-2021-07-26
         args: --all-targets --all-features -- -D warnings
 
   test-osx:
@@ -58,10 +59,10 @@ jobs:
 
       - name: cargo-test
         uses: actions-rs/cargo@v1
-          with:
-            command: test
-            toolchain: nightly-2021-07-26
-            args: --workspace
+        with:
+          command: test
+          toolchain: nightly-2021-07-26
+          args: --workspace
 
   test-windows:
     runs-on: windows-latest
@@ -79,7 +80,7 @@ jobs:
 
       - name: cargo-test
         uses: actions-rs/cargo@v1
-          with:
-            toolchain: nightly-2021-07-26
-            command: cargo
-            args: --workspace
+        with:
+          toolchain: nightly-2021-07-26
+          command: test
+          args: --workspace
