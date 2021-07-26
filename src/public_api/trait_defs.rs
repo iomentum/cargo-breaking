@@ -30,8 +30,8 @@ impl<'a> TraitDefVisitor<'a> {
         let path = Vec::new();
         TraitDefVisitor {
             items,
-            resolver,
             path,
+            resolver,
         }
     }
 
@@ -99,9 +99,9 @@ pub(crate) struct TraitDefMetadata {
     types: Vec<TraitItemType>,
 }
 
-impl Into<ItemKind> for TraitDefMetadata {
-    fn into(self) -> ItemKind {
-        ItemKind::TraitDef(self)
+impl From<TraitDefMetadata> for ItemKind {
+    fn from(metadata: TraitDefMetadata) -> ItemKind {
+        ItemKind::TraitDef(metadata)
     }
 }
 
