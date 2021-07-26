@@ -23,7 +23,7 @@ jobs:
         components: rustfmt, clippy
 
     - name: cargo test
-      run: cargo +nightly-2021-07-26 test --workspace
+    - run: cargo +nightly-2021-07-26 test --workspace
 
     - name: rustfmt
       run: cargo +nightly-2021-07-26 fmt -- --check
