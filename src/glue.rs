@@ -70,8 +70,6 @@ impl Callbacks for MockedCompiler {
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
         // get prev & next
-        //
-
         let changeset = queries
             .global_ctxt()
             .unwrap()
@@ -115,39 +113,8 @@ fn get_changeset(tcx: TyCtxt) -> AnyResult<ChangeSet> {
     Ok(Vec::new())
 }
 
-fn get_diagnosis(tcx: &TyCtxt) -> AnyResult<ApiCompatibilityDiagnostics> {
-    let (prev, curr) =
-        get_previous_and_next_nums(tcx).context("Failed to get dependencies crate id")?;
-    let comparator = ApiComparator::from_crate_nums(prev, curr, tcx);
+fn get_diagnosis(tcx: TyCtxt) -> AnyResult<ApiCompatibilityDiagnostics> {
+    let stuff = ApiComparator::from_tcx(tcx)?.run();
 
-    Ok(comparator.run(tcx))
-}
-
-pub fn get_previous_and_next_nums(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
-    let previous_num =
-        get_crate_num(tcx, "previous").context("Failed to get crate id for `previous`")?;
-    let next_num = get_crate_num(tcx, "next").context("Failed to get crate id for `next`")?;
-
-    Ok((previous_num, next_num))
-}
-
-fn get_crate_num(tcx: &TyCtxt, name: &str) -> AnyResult<CrateNum> {
-    tcx.crates(())
-        .iter()
-        .find(|cnum| crate_name_is(tcx, **cnum, name))
-        .copied()
-        .ok_or_else(|| anyhow!("Crate not found"))
-}
-
-fn crate_name_is(tcx: &TyCtxt, cnum: CrateNum, name: &str) -> bool {
-    let def_id = cnum.as_def_id();
-
-    if let Some(extern_crate) = tcx.extern_crate(def_id) {
-        match extern_crate.src {
-            ExternCrateSource::Extern(_) => tcx.item_name(def_id).as_str() == name,
-            ExternCrateSource::Path => return false,
-        }
-    } else {
-        false
-    }
+    Ok(stuff)
 }

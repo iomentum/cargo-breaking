@@ -1,5 +1,7 @@
 pub(crate) mod utils;
 
+use anyhow::{anyhow, Context, Result as AnyResult};
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
@@ -8,6 +10,7 @@ use std::{
 
 use semver::{BuildMetadata, Prerelease, Version};
 
+use rustc_middle::middle::cstore::ExternCrateSource;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::CrateNum;
 
@@ -16,29 +19,36 @@ use crate::{
     public_api::PublicApi,
 };
 
-pub struct ApiComparator {
+pub struct ApiComparator<'tcx> {
     previous: PublicApi,
     current: PublicApi,
+    tcx: TyCtxt<'tcx>,
 }
 
-impl ApiComparator {
-    pub(crate) fn from_crate_nums(prev: CrateNum, curr: CrateNum, tcx: &TyCtxt) -> ApiComparator {
-        let previous_api = PublicApi::from_crate(tcx, prev.as_def_id());
-        let current_api = PublicApi::from_crate(tcx, curr.as_def_id());
+impl<'tcx> ApiComparator<'tcx> {
+    pub(crate) fn from_tcx(tcx: TyCtxt<'tcx>) -> AnyResult<ApiComparator> {
+        let (prev, curr) =
+            get_previous_and_next_nums(&tcx).context("Failed to get dependencies crate id")?;
+        let previous_api = PublicApi::from_crate(&tcx, prev.as_def_id());
+        let current_api = PublicApi::from_crate(&tcx, curr.as_def_id());
 
-        ApiComparator::new(previous_api, current_api)
+        Ok(ApiComparator::new(previous_api, current_api, tcx))
     }
 
-    fn new(previous: PublicApi, current: PublicApi) -> ApiComparator {
-        ApiComparator { previous, current }
+    fn new(previous: PublicApi, current: PublicApi, tcx: TyCtxt<'tcx>) -> ApiComparator {
+        ApiComparator {
+            previous,
+            current,
+            tcx,
+        }
     }
 
-    pub fn run(&self, tcx: &TyCtxt) -> ApiCompatibilityDiagnostics {
+    pub fn run(self) -> ApiCompatibilityDiagnostics {
         let mut collector = DiagnosisCollector::new();
 
-        self.item_removals(tcx, &mut collector);
-        self.item_modifications(tcx, &mut collector);
-        self.item_additions(tcx, &mut collector);
+        self.item_removals(&mut collector);
+        self.item_modifications(&mut collector);
+        self.item_additions(&mut collector);
 
         let mut diags = collector.finalize();
         diags.sort();
@@ -46,20 +56,51 @@ impl ApiComparator {
         ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.previous.items(), self.current.items())
-            .for_each(|(_, kind)| kind.removal_diagnosis(tcx, diagnosis_collector))
+            .for_each(|(_, kind)| kind.removal_diagnosis(&self.tcx, diagnosis_collector))
     }
 
-    fn item_modifications(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
         map_modifications(self.previous.items(), self.current.items()).for_each(
-            |(_, kind_a, kind_b)| kind_a.modification_diagnosis(kind_b, tcx, diagnosis_collector),
+            |(_, kind_a, kind_b)| {
+                kind_a.modification_diagnosis(kind_b, &self.tcx, diagnosis_collector)
+            },
         )
     }
 
-    fn item_additions(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.current.items(), self.previous.items())
-            .for_each(|(_, kind)| kind.addition_diagnosis(tcx, diagnosis_collector))
+            .for_each(|(_, kind)| kind.addition_diagnosis(&self.tcx, diagnosis_collector))
+    }
+}
+
+fn get_previous_and_next_nums(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
+    let previous_num =
+        get_crate_num(tcx, "previous").context("Failed to get crate id for `previous`")?;
+    let next_num = get_crate_num(tcx, "next").context("Failed to get crate id for `next`")?;
+
+    Ok((previous_num, next_num))
+}
+
+fn get_crate_num(tcx: &TyCtxt, name: &str) -> AnyResult<CrateNum> {
+    tcx.crates(())
+        .iter()
+        .find(|cnum| crate_name_is(tcx, **cnum, name))
+        .copied()
+        .ok_or_else(|| anyhow!("Crate not found"))
+}
+
+fn crate_name_is(tcx: &TyCtxt, cnum: CrateNum, name: &str) -> bool {
+    let def_id = cnum.as_def_id();
+
+    if let Some(extern_crate) = tcx.extern_crate(def_id) {
+        match extern_crate.src {
+            ExternCrateSource::Extern(_) => tcx.item_name(def_id).as_str() == name,
+            ExternCrateSource::Path => return false,
+        }
+    } else {
+        false
     }
 }
 
