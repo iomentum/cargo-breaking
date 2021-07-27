@@ -9,6 +9,7 @@ use std::{
 use semver::{BuildMetadata, Prerelease, Version};
 
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::CrateNum;
 
 use crate::{
     diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
@@ -21,7 +22,14 @@ pub struct ApiComparator {
 }
 
 impl ApiComparator {
-    pub(crate) fn new(previous: PublicApi, current: PublicApi) -> ApiComparator {
+    pub(crate) fn from_crate_nums(prev: CrateNum, curr: CrateNum, tcx: &TyCtxt) -> ApiComparator {
+        let previous_api = PublicApi::from_crate(tcx, prev.as_def_id());
+        let current_api = PublicApi::from_crate(tcx, curr.as_def_id());
+
+        ApiComparator::new(previous_api, current_api)
+    }
+
+    fn new(previous: PublicApi, current: PublicApi) -> ApiComparator {
         ApiComparator { previous, current }
     }
 

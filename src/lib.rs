@@ -20,7 +20,6 @@ mod public_api;
 use anyhow::{Context, Result as AnyResult};
 use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
-pub use glue::compare;
 
 pub use comparator::utils::get_diff_from_sources;
 

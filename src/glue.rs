@@ -94,13 +94,14 @@ impl Callbacks for MockedCompiler {
 }
 
 fn get_diagnosis(tcx: &TyCtxt) -> AnyResult<ApiCompatibilityDiagnostics> {
-    let (prev, curr) = get_crates_id(tcx).context("Failed to get dependencies crate id")?;
-    let comparator = compare(tcx, prev, curr);
+    let (prev, curr) =
+        get_previous_and_current_nums(tcx).context("Failed to get dependencies crate id")?;
+    let comparator = ApiComparator::from_crate_nums(prev, curr, tcx);
 
     Ok(comparator.run(tcx))
 }
 
-pub fn get_crates_id(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
+pub fn get_previous_and_current_nums(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
     let previous_num =
         get_crate_num(tcx, "previous").context("Failed to get crate id for `previous`")?;
     let current_num =
@@ -128,11 +129,4 @@ fn crate_name_is(tcx: &TyCtxt, cnum: CrateNum, name: &str) -> bool {
     } else {
         false
     }
-}
-
-pub fn compare(tcx: &TyCtxt, prev: CrateNum, curr: CrateNum) -> ApiComparator {
-    let previous_api = PublicApi::from_crate(tcx, prev.as_def_id());
-    let current_api = PublicApi::from_crate(tcx, curr.as_def_id());
-
-    ApiComparator::new(previous_api, current_api)
 }
