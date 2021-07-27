@@ -28,8 +28,8 @@ impl PublicApi {
         api
     }
 
-    pub(crate) fn items(&self) -> &HashMap<String, ApiItem> {
-        &self.items
+    pub(crate) fn items(self) -> HashMap<String, ApiItem> {
+        self.items
     }
 
     fn empty() -> PublicApi {

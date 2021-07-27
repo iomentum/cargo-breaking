@@ -1,3 +1,9 @@
+use std::{
+    cmp::Ordering,
+    fmt::{self, Display, Formatter},
+    process::Command,
+};
+
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, Compilation};
@@ -6,7 +12,11 @@ use rustc_middle::{middle::cstore::ExternCrateSource, ty::TyCtxt};
 use rustc_session::config::Input;
 use rustc_span::{def_id::CrateNum, FileName};
 
-use crate::{comparator::ApiComparator, ApiCompatibilityDiagnostics};
+use crate::{
+    comparator::{ApiComparator, Comparator, Diff},
+    public_api::PublicApi,
+    ApiCompatibilityDiagnostics,
+};
 
 struct Compiler;
 
@@ -70,11 +80,10 @@ impl Callbacks for MockedCompiler {
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
         // get prev & next
-        let changeset = queries
-            .global_ctxt()
-            .unwrap()
-            .take()
-            .enter(|tcx| get_changeset(tcx));
+        let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
+            let comparator = ApiComparator::from_tcx(tcx)?;
+            get_changeset(comparator)
+        });
 
         *self = MockedCompiler::Finished(changeset);
 
@@ -83,34 +92,89 @@ impl Callbacks for MockedCompiler {
     }
 }
 
-pub type ChangeSet = Vec<Change>;
-
-pub enum Item {
-    Fn,
+pub struct ChangeSet {
+    changes: Vec<Change>,
 }
 
-pub enum Diff {
-    Addition(Item),
-    Edition(Item),
-    Deletion(Item),
+impl ChangeSet {
+    pub fn from_diffs(d: Vec<Diff>) -> Self {
+        let mut changes: Vec<Change> = d.into_iter().map(Into::into).collect();
+
+        changes.sort();
+
+        Self { changes }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.changes.is_empty()
+    }
 }
 
+impl Display for ChangeSet {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.changes
+            .iter()
+            .try_for_each(|change| writeln!(f, "{}", change))
+    }
+}
+
+#[cfg(test)]
+mod change_set_tests {
+    #[test]
+    fn test_change_set() {
+        // TODO [sasha]:  ofc :D
+        unimplemented!()
+    }
+}
+
+#[derive(Eq)]
 pub enum Change {
     Breaking(Diff),
     NonBreaking(Diff),
 }
 
-fn get_changeset(tcx: TyCtxt) -> AnyResult<ChangeSet> {
-    // get prev and next
-    // get public api for both
+impl Display for Change {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!();
+    }
+}
 
-    // new comparator(prev, next)
+impl Ord for Change {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (&self, &other) {
+            (&Self::Breaking(_), &Self::NonBreaking(_)) => Ordering::Greater,
+            (&Self::NonBreaking(_), &Self::Breaking(_)) => Ordering::Less,
+            (&Self::Breaking(previous), &Self::Breaking(next)) => previous.cmp(&next),
+            (&Self::NonBreaking(previous), &Self::NonBreaking(next)) => previous.cmp(&next),
+        }
+    }
+}
 
+impl PartialOrd for Change {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Change {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+impl From<Diff> for Change {
+    fn from(d: Diff) -> Self {
+        // TODO [sasha]: there's some polymorphism here to perform
+        // to figure out if a change is breaking
+        todo!()
+    }
+}
+
+fn get_changeset(comparator: impl Comparator) -> AnyResult<ChangeSet> {
     // get additions / editions / deletions
+    let diffs: Vec<Diff> = comparator.get_diffs();
 
-    // impl from<Diff> for Change magique
-
-    Ok(Vec::new())
+    Ok(ChangeSet::from_diffs(diffs))
 }
 
 fn get_diagnosis(tcx: TyCtxt) -> AnyResult<ApiCompatibilityDiagnostics> {

@@ -3,12 +3,15 @@ pub(crate) mod utils;
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
     hash::Hash,
 };
 
-use crate::utils::{NEXT_CRATE_NAME, PREVIOUS_CRATE_NAME};
+use crate::public_api::ApiItem;
+
+use utils::{NEXT_CRATE_NAME, PREVIOUS_CRATE_NAME};
 
 use semver::{BuildMetadata, Prerelease, Version};
 
@@ -23,57 +26,181 @@ use crate::{
 
 pub struct ApiComparator<'tcx> {
     previous: PublicApi,
-    current: PublicApi,
+    next: PublicApi,
     tcx: TyCtxt<'tcx>,
+}
+
+/// This struct holds a public item's path,
+/// and anything relevant to identify a breaking change or not.
+#[derive(Eq)]
+pub enum Item {
+    Fn(String),
+}
+
+impl Item {
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Fn(path) => path.as_str(),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl PartialOrd for Item {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Item {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.path().cmp(other.path())
+    }
+}
+
+impl PartialEq for Item {
+    fn eq(&self, other: &Self) -> bool {
+        self.path() == other.path()
+    }
+}
+
+#[derive(Eq)]
+pub enum Diff {
+    Addition(Item),
+    Edition(Item, Item),
+    Deletion(Item),
+}
+
+impl Ord for Diff {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (&self, &other) {
+            (&Self::Deletion(previous), &Self::Deletion(next)) => previous.cmp(&next),
+            (&Self::Deletion(_), _) => Ordering::Less,
+            (_, &Self::Deletion(_)) => Ordering::Greater,
+            (&Self::Edition(p1, n1), &Self::Edition(p2, n2)) => {
+                p1.cmp(&p2).then_with(|| n1.cmp(&n2))
+            }
+            (&Self::Edition(_, _), _) => Ordering::Less,
+            (_, &Self::Edition(_, _)) => Ordering::Greater,
+            (&Self::Addition(previous), &Self::Addition(next)) => previous.cmp(&next),
+        }
+    }
+}
+
+impl PartialOrd for Diff {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Diff {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+impl From<ApiItem> for Item {
+    fn from(ai: ApiItem) -> Self {
+        // TODO [sasha]: figure this out :upside_down_face:
+        todo!()
+    }
+}
+
+impl Diff {
+    pub fn from_path_and_changes(path: String, changes: (Option<Item>, Option<Item>)) -> Self {
+        match (changes.0, changes.1) {
+            (None, Some(c)) => Self::Addition(c),
+            (Some(c), None) => Self::Deletion(c),
+            (Some(p), Some(n)) => Self::Edition(p, n),
+            _ => panic!("NONE AND NONE WTF"),
+        }
+    }
+}
+
+pub(crate) trait Comparator {
+    fn get_diffs(self) -> Vec<Diff>;
 }
 
 impl<'tcx> ApiComparator<'tcx> {
     pub(crate) fn from_tcx(tcx: TyCtxt<'tcx>) -> AnyResult<ApiComparator> {
+        // get prev and next
         let (prev, curr) =
             get_previous_and_next_nums(&tcx).context("Failed to get dependencies crate id")?;
-        let previous_api = PublicApi::from_crate(&tcx, prev.as_def_id());
-        let current_api = PublicApi::from_crate(&tcx, curr.as_def_id());
-
-        Ok(ApiComparator::new(previous_api, current_api, tcx))
-    }
-
-    fn new(previous: PublicApi, current: PublicApi, tcx: TyCtxt<'tcx>) -> ApiComparator {
-        ApiComparator {
+        // get public api for both
+        let previous = PublicApi::from_crate(&tcx, prev.as_def_id());
+        let next = PublicApi::from_crate(&tcx, curr.as_def_id());
+        // new comparator(prev, next)
+        Ok(ApiComparator {
             previous,
-            current,
+            next,
             tcx,
+        })
+    }
+
+    fn get_paths_and_api_changes(self) -> HashMap<String, (Option<Item>, Option<Item>)> {
+        let mut paths_and_api_changes = self
+            .previous
+            .items()
+            .into_iter()
+            .map(|(key, value)| (key, (Some(value.into()), None)))
+            .collect::<HashMap<String, (Option<Item>, Option<Item>)>>();
+        for (key, value) in self.next.items().into_iter() {
+            let mut entry = paths_and_api_changes.entry(key).or_insert((None, None));
+            entry.1 = Some(value.into());
         }
+        paths_and_api_changes
     }
 
+    // TODO: -_-
     pub fn run(self) -> ApiCompatibilityDiagnostics {
-        let mut collector = DiagnosisCollector::new();
+        todo!();
+        // let mut collector = DiagnosisCollector::new();
 
-        self.item_removals(&mut collector);
-        self.item_modifications(&mut collector);
-        self.item_additions(&mut collector);
+        // self.item_removals(&mut collector);
+        // self.item_modifications(&mut collector);
+        // self.item_additions(&mut collector);
 
-        let mut diags = collector.finalize();
-        diags.sort();
+        // let mut diags = collector.finalize();
+        // diags.sort();
 
-        ApiCompatibilityDiagnostics { diags }
+        // ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
-        map_difference(self.previous.items(), self.current.items())
-            .for_each(|(_, kind)| kind.removal_diagnosis(&self.tcx, diagnosis_collector))
-    }
+    // fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    //     map_difference(self.previous.items(), self.next.items())
+    //         .for_each(|(_, kind)| kind.removal_diagnosis(&self.tcx, diagnosis_collector))
+    // }
 
-    fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
-        map_modifications(self.previous.items(), self.current.items()).for_each(
-            |(_, kind_a, kind_b)| {
-                kind_a.modification_diagnosis(kind_b, &self.tcx, diagnosis_collector)
-            },
-        )
-    }
+    // fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    //     map_modifications(self.previous.items(), self.next.items()).for_each(
+    //         |(_, kind_a, kind_b)| {
+    //             kind_a.modification_diagnosis(kind_b, &self.tcx, diagnosis_collector)
+    //         },
+    //     )
+    // }
 
-    fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
-        map_difference(self.current.items(), self.previous.items())
-            .for_each(|(_, kind)| kind.addition_diagnosis(&self.tcx, diagnosis_collector))
+    // fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    //     map_difference(self.next.items(), self.previous.items())
+    //         .for_each(|(_, kind)| kind.addition_diagnosis(&self.tcx, diagnosis_collector))
+    // }
+}
+
+impl<'tcx> Comparator for ApiComparator<'tcx> {
+    fn get_diffs(self) -> Vec<Diff> {
+        let paths_and_api_changes = self.get_paths_and_api_changes();
+        paths_and_api_changes
+            .into_iter()
+            .map(|(path, changes)| Diff::from_path_and_changes(path, changes))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod comparator_tests {
+    #[test]
+    fn test_comparator() {
+        // TODO [sasha]: ofc :D
+        unimplemented!()
     }
 }
 

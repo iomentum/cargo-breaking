@@ -53,8 +53,10 @@ impl BuildEnvironment {
             println!("{}", diff);
         }
 
+        /*
         let next_version = diff.guess_next_version(self.initial_version);
         println!("Next version is: {}", next_version);
+        */
 
         Ok(())
     }
