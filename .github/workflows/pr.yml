@@ -20,7 +20,7 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly-2021-07-26
-        components: rustfmt, clippy
+        components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
 
     - name: cargo-test
       uses: actions-rs/cargo@v1
@@ -55,7 +55,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-07-26
-          components: rustfmt, clippy, llvm-tools-preview, rustc-dev, rust-src
+          components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
 
       - name: cargo-test
         uses: actions-rs/cargo@v1
@@ -76,7 +76,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-07-26
-          components: rustfmt, clippy
+          components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
 
       - name: cargo-test
         uses: actions-rs/cargo@v1
