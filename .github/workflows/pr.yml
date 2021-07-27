@@ -55,7 +55,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-07-26
-          components: rustfmt, clippy, llvm-tools-preview rustc-dev rust-src
+          components: rustfmt, clippy, llvm-tools-preview, rustc-dev, rust-src
 
       - name: cargo-test
         uses: actions-rs/cargo@v1
