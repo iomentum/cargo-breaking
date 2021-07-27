@@ -1,3 +1,4 @@
+mod git;
 mod glue_gen;
 mod manifest;
 
@@ -10,7 +11,10 @@ use anyhow::{bail, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
-use self::glue_gen::{GlueCrate, GlueCrateGenerator};
+use self::{
+    glue_gen::{GlueCrate, GlueCrateGenerator},
+    manifest::Manifest,
+};
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
 const GLUE_CRATE_NAME: &str = "glue";
@@ -34,9 +38,13 @@ impl BuildEnvironment {
             }
 
             ProgramInvocation::FromCli { comparaison_ref } => {
-                let glue_crate = GlueCrateGenerator::new(comparaison_ref)
-                    .generate()
-                    .context("Failed to generate glue crate")?;
+                let manifest = Manifest::from_env()
+                    .context("Failed to get information from the manifest file")?;
+
+                let glue_crate =
+                    GlueCrateGenerator::new(manifest.package_name().to_string(), comparaison_ref)
+                        .generate()
+                        .context("Failed to generate glue crate")?;
 
                 invoke_cargo(&glue_crate).context("cargo invocation failed")?;
 

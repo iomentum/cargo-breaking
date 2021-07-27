@@ -12,7 +12,6 @@ extern crate rustc_span;
 mod cli;
 mod comparator;
 mod diagnosis;
-mod git;
 mod glue;
 mod public_api;
 
@@ -20,13 +19,9 @@ use anyhow::{Context, Result as AnyResult};
 use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
 
-pub use comparator::utils::get_diff_from_sources;
-
 pub fn run() -> AnyResult<()> {
-    /*
     let env =
         cli::BuildEnvironment::from_cli().context("Failed to generate the build environment")?;
-        */
 
     let diff =
         utils::get_diff_from_sources("pub fn foo() {}", "pub fn bar() {} pub fn foo(a: i32) {}")
