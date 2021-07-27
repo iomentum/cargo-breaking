@@ -1,4 +1,5 @@
 mod glue_gen;
+mod manifest;
 
 use std::{
     env,
@@ -16,12 +17,21 @@ const GLUE_CRATE_NAME: &str = "glue";
 
 pub(crate) struct BuildEnvironment {
     args: Vec<String>,
+    initial_version: Version,
 }
 
 impl BuildEnvironment {
     pub(crate) fn from_cli() -> AnyResult<BuildEnvironment> {
         match ProgramInvocation::parse() {
-            ProgramInvocation::FromCargo { args } => Ok(BuildEnvironment { args }),
+            ProgramInvocation::FromCargo { args } => {
+                let initial_version =
+                    Self::fetch_initial_version().context("Failed to get initial crate version")?;
+
+                Ok(BuildEnvironment {
+                    args,
+                    initial_version,
+                })
+            }
 
             ProgramInvocation::FromCli { comparaison_ref } => {
                 let glue_crate = GlueCrateGenerator::new(comparaison_ref)
@@ -41,8 +51,12 @@ impl BuildEnvironment {
         &self.args
     }
 
-    pub(crate) fn initial_version(&self) -> Version {
-        todo!()
+    pub(crate) fn initial_version(&self) -> &Version {
+        &self.initial_version
+    }
+
+    fn fetch_initial_version() -> AnyResult<Version> {
+        manifest::get_crate_version("previous/Cargo.toml")
     }
 }
 
