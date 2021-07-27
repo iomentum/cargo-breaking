@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use rustc_span::def_id::DefId;
 
 use rustc_middle::ty::TyCtxt;

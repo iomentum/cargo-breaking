@@ -20,8 +20,8 @@ impl DiagnosticGenerator for ModMetadata {
     fn modification_diagnosis(
         &self,
         _other: &ModMetadata,
-        tcx: &TyCtxt,
-        collector: &mut DiagnosisCollector,
+        _tcx: &TyCtxt,
+        _collector: &mut DiagnosisCollector,
     ) {
         // If the module is defined (and public) on both the previous and
         // current version, then there's no modification.

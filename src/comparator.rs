@@ -40,20 +40,18 @@ impl ApiComparator {
 
     fn item_removals(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.previous.items(), self.current.items())
-            .for_each(|(path, kind)| kind.removal_diagnosis(tcx, diagnosis_collector))
+            .for_each(|(_, kind)| kind.removal_diagnosis(tcx, diagnosis_collector))
     }
 
     fn item_modifications(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_modifications(self.previous.items(), self.current.items()).for_each(
-            |(path, kind_a, kind_b)| {
-                kind_a.modification_diagnosis(kind_b, tcx, diagnosis_collector)
-            },
+            |(_, kind_a, kind_b)| kind_a.modification_diagnosis(kind_b, tcx, diagnosis_collector),
         )
     }
 
     fn item_additions(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.current.items(), self.previous.items())
-            .for_each(|(path, kind)| kind.addition_diagnosis(tcx, diagnosis_collector))
+            .for_each(|(_, kind)| kind.addition_diagnosis(tcx, diagnosis_collector))
     }
 }
 

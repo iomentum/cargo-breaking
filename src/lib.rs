@@ -22,11 +22,6 @@ use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
 pub use glue::compare;
 
-use crate::{
-    comparator::ApiComparator,
-    git::{CrateRepo, GitBackend},
-};
-
 pub use comparator::utils::get_diff_from_sources;
 
 pub fn run() -> AnyResult<()> {

@@ -1,11 +1,6 @@
-use std::{
-    error::Error,
-    fmt::{Display, Formatter, Result as FmtResult},
-    process::Command,
-    str::FromStr,
-};
+use std::process::Command;
 
-use anyhow::{anyhow, bail, Context, Result as AnyResult};
+use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_errors::ErrorReported;
@@ -36,8 +31,8 @@ struct Compiler;
 impl Callbacks for Compiler {
     fn after_analysis<'tcx>(
         &mut self,
-        compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries,
+        _compiler: &rustc_interface::interface::Compiler,
+        _queries: &'tcx rustc_interface::Queries,
     ) -> Compilation {
         Compilation::Stop
     }
@@ -83,7 +78,7 @@ impl Callbacks for MockedCompiler {
 
     fn after_analysis<'tcx>(
         &mut self,
-        compiler: &rustc_interface::interface::Compiler,
+        _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
         let diff = queries

@@ -37,7 +37,7 @@ pub(crate) trait DiagnosticGenerator {
     // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_hir/def_id/struct.DefId.html
     fn modification_diagnosis(
         &self,
-        other: &Self,
+        _other: &Self,
         tcx: &TyCtxt,
         collector: &mut DiagnosisCollector,
     ) {

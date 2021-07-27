@@ -1,19 +1,13 @@
 mod functions;
 mod modules;
 
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter, Result as FmtResult},
-    hash::Hash,
-};
+use std::collections::HashMap;
 
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
-use rustc_span::def_id::{CrateNum, DefId};
+use rustc_span::def_id::DefId;
 
-use tap::Tap;
-
-use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
+use crate::diagnosis::DiagnosticGenerator;
 
 use self::{functions::FnMetadata, modules::ModMetadata};
 

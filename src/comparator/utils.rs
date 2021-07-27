@@ -58,7 +58,6 @@ struct CompilationUnit<'a> {
     code: String,
     crate_name: String,
     dependencies: Vec<CompilationUnit<'a>>,
-    diags: Option<ApiCompatibilityDiagnostics>,
     is_final: bool,
     root_path: &'a Path,
 }
@@ -81,7 +80,6 @@ impl<'a> CompilationUnit<'a> {
             code: "extern crate previous; extern crate current;".to_owned(),
             crate_name: "glue".to_owned(),
             dependencies: vec![previous_crate, current_crate],
-            diags: None,
             is_final: true,
             root_path,
         }
@@ -92,7 +90,6 @@ impl<'a> CompilationUnit<'a> {
             code: String::new(),
             crate_name,
             dependencies: Vec::new(),
-            diags: None,
             is_final: false,
             root_path,
         }
