@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn new_public_method_is_addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
         },
@@ -21,7 +20,7 @@ fn new_public_method_is_addition() {
 
 #[test]
 fn new_private_method_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
         },
@@ -39,7 +38,7 @@ fn new_private_method_is_not_reported() {
 
 #[test]
 fn method_removal_is_removal() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
 
@@ -59,7 +58,7 @@ fn method_removal_is_removal() {
 
 #[test]
 fn signature_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
 
@@ -81,7 +80,7 @@ fn signature_change_is_modification() {
 
 #[test]
 fn generic_param_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
             impl<T> A {
@@ -101,7 +100,7 @@ fn generic_param_change_is_modification() {
 
 #[test]
 fn generic_arg_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct A;
 
@@ -123,7 +122,7 @@ fn generic_arg_change_is_modification() {
 
 #[test]
 fn not_reported_when_type_is_not_public() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             struct A;
 
@@ -143,7 +142,7 @@ fn not_reported_when_type_is_not_public() {
 
 #[test]
 fn is_reported_in_type_definition_path_1() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub mod foo {
                 pub struct Bar;
@@ -165,7 +164,7 @@ fn is_reported_in_type_definition_path_1() {
 
 #[test]
 fn is_reported_in_type_definition_path_2() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub mod foo {
                 pub struct Bar;

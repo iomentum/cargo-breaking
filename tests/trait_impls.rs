@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn addition_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct T;
         },
@@ -19,7 +18,7 @@ fn addition_simple() {
 
 #[test]
 fn modification_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct T;
 
@@ -37,7 +36,7 @@ fn modification_simple() {
 
 #[test]
 fn provided_method_implementation_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct S;
 
@@ -57,7 +56,7 @@ fn provided_method_implementation_is_not_reported() {
 
 #[test]
 fn constant_modification_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct S;
 
@@ -79,7 +78,7 @@ fn constant_modification_is_modification() {
 
 #[test]
 fn type_modification_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct S;
 
@@ -101,7 +100,7 @@ fn type_modification_is_modification() {
 
 #[test]
 fn impl_trait_order_is_not_tracked() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub struct S;
 
@@ -121,7 +120,7 @@ fn impl_trait_order_is_not_tracked() {
 
 #[test]
 fn not_reported_when_type_is_not_public() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             struct S;
 

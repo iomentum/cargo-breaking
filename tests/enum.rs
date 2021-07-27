@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn not_reported_when_private() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             enum A {}
@@ -15,7 +14,7 @@ fn not_reported_when_private() {
 
 #[test]
 fn new_enum() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub enum A {}
@@ -27,7 +26,7 @@ fn new_enum() {
 
 #[test]
 fn new_named_variant_field_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub enum A {
                 B {}
@@ -36,7 +35,7 @@ fn new_named_variant_field_is_modification() {
         {
             pub enum A {
                 B {
-                    pub c: u8,
+                    c: u8,
                 }
             }
         },
@@ -47,14 +46,14 @@ fn new_named_variant_field_is_modification() {
 
 #[test]
 fn new_unnamed_variant_field_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub enum A {
                 B() }
         },
         {
             pub enum A {
-                B(pub u8)
+                B(u8)
             }
         },
     };
@@ -64,15 +63,15 @@ fn new_unnamed_variant_field_is_modification() {
 
 #[test]
 fn named_field_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub enum A {
-                B(pub u8),
+                B(u8),
             }
         },
         {
             pub enum A {
-                B(pub u16),
+                B(u16),
             }
         }
     };
@@ -90,8 +89,7 @@ fn empty_variant_kind_change_is_modification() {
 
     for (id_a, file_a) in files.iter().enumerate() {
         for (id_b, file_b) in files.iter().enumerate() {
-            let comparator = cargo_breaking::compare(file_a, file_b).unwrap();
-            let diff = comparator.run();
+            let diff = cargo_breaking::get_diff_from_sources(file_a, file_b).unwrap();
 
             if id_a != id_b {
                 assert_eq!(diff.to_string(), "≠ A\n");
