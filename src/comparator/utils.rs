@@ -11,8 +11,8 @@ use rustc_interface::Config;
 use rustc_session::config::Input;
 use rustc_span::FileName;
 
-const PREVIOUS_CRATE_NAME: &str = "previous";
-const NEXT_CRATE_NAME: &str = "next";
+pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
+pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
     glue::{ChangeSet, MockedCompiler},

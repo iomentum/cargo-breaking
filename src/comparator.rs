@@ -8,6 +8,8 @@ use std::{
     hash::Hash,
 };
 
+use crate::utils::{NEXT_CRATE_NAME, PREVIOUS_CRATE_NAME};
+
 use semver::{BuildMetadata, Prerelease, Version};
 
 use rustc_middle::middle::cstore::ExternCrateSource;
@@ -76,9 +78,10 @@ impl<'tcx> ApiComparator<'tcx> {
 }
 
 fn get_previous_and_next_nums(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
-    let previous_num =
-        get_crate_num(tcx, "previous").context("Failed to get crate id for `previous`")?;
-    let next_num = get_crate_num(tcx, "next").context("Failed to get crate id for `next`")?;
+    let previous_num = get_crate_num(tcx, PREVIOUS_CRATE_NAME)
+        .with_context(|| format!("Failed to get crate id for `{}`", PREVIOUS_CRATE_NAME))?;
+    let next_num = get_crate_num(tcx, NEXT_CRATE_NAME)
+        .with_context(|| format!("Failed to get crate id for `{}`", NEXT_CRATE_NAME))?;
 
     Ok((previous_num, next_num))
 }
