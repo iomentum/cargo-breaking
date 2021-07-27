@@ -27,7 +27,7 @@ pub(crate) trait DiagnosticGenerator {
     }
 
     // TODO: this function is supposed to be called each time the DefId of the
-    // previous and current crates is not equal. As they have different
+    // previous and next crates is not equal. As they have different
     // CrateNum, they are almost guaranteed to not be equal, even if they
     // define the exact same thing.
     // Consequently, it is very common that this method is called even when
