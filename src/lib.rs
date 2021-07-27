@@ -32,6 +32,7 @@ pub fn run() -> AnyResult<()> {
         utils::get_diff_from_sources("pub fn foo() {}", "pub fn bar() {} pub fn foo(a: i32) {}")
             .unwrap();
 
+    /*
     let version = manifest::get_crate_version().context("Failed to get crate version")?;
 
     if !diff.is_empty() {
@@ -40,6 +41,7 @@ pub fn run() -> AnyResult<()> {
 
     let next_version = diff.guess_next_version(version);
     println!("Next version is: {}", next_version);
+    */
 
     Ok(())
 }
