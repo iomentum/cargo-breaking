@@ -63,7 +63,6 @@ pub(crate) trait DiagnosticGenerator {
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
     path: String,
-    trait_impl: Option<String>,
 }
 
 impl DiagnosisItem {
@@ -71,7 +70,6 @@ impl DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Removal,
             path,
-            trait_impl: None,
         }
     }
 
@@ -79,7 +77,6 @@ impl DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Modification,
             path,
-            trait_impl: None,
         }
     }
 
@@ -87,7 +84,6 @@ impl DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Addition,
             path,
-            trait_impl: None,
         }
     }
 
@@ -106,13 +102,7 @@ impl DiagnosisItem {
 
 impl Display for DiagnosisItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{} {}", self.kind, self.path)?;
-
-        if let Some(trait_) = &self.trait_impl {
-            write!(f, ": {}", trait_)
-        } else {
-            Ok(())
-        }
+        write!(f, "{} {}", self.kind, self.path)
     }
 }
 
