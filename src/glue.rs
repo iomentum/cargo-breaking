@@ -14,7 +14,7 @@ use rustc_span::{def_id::CrateNum, FileName};
 
 use crate::{
     comparator::{ApiComparator, Comparator, Diff},
-    public_api::PublicApi,
+    public_api::{ApiItem, PublicApi},
     ApiCompatibilityDiagnostics,
 };
 
@@ -97,8 +97,8 @@ pub struct ChangeSet {
 }
 
 impl ChangeSet {
-    pub fn from_diffs(d: Vec<Diff>) -> Self {
-        let mut changes: Vec<Change> = d.into_iter().map(Into::into).collect();
+    pub(crate) fn from_diffs(d: Vec<Diff>) -> Self {
+        let mut changes: Vec<Change> = d.into_iter().filter_map(Change::from_diff).collect();
 
         changes.sort();
 
@@ -127,16 +127,10 @@ mod change_set_tests {
     }
 }
 
-#[derive(Eq)]
-pub enum Change {
+#[derive(Debug, Eq)]
+pub(crate) enum Change {
     Breaking(Diff),
     NonBreaking(Diff),
-}
-
-impl Display for Change {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!();
-    }
 }
 
 impl Ord for Change {
@@ -162,11 +156,39 @@ impl PartialEq for Change {
     }
 }
 
-impl From<Diff> for Change {
-    fn from(d: Diff) -> Self {
+impl Display for Change {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.diff().fmt(f)
+    }
+}
+
+impl Change {
+    pub(crate) fn from_diff(d: Diff) -> Option<Change> {
         // TODO [sasha]: there's some polymorphism here to perform
         // to figure out if a change is breaking
-        todo!()
+
+        match d {
+            // Adding something is not a breaking change
+            Diff::Addition(_) => Some(Change::NonBreaking(d)),
+
+            // Changing an item into another item (eg: changing a Type to a
+            // Trait) is always a breaking change.
+            Diff::Edition(ref prev, ref next) if prev.kind() != next.kind() => {
+                Some(Change::Breaking(d))
+            }
+
+            Diff::Edition(prev, next) => ApiItem::generate_changes(prev, next),
+
+            // Removing anything that is publicly exposed is always breaking.
+            Diff::Deletion(_) => Some(Change::Breaking(d)),
+        }
+    }
+
+    fn diff(&self) -> &Diff {
+        match self {
+            Change::Breaking(d) => d,
+            Change::NonBreaking(d) => d,
+        }
     }
 }
 

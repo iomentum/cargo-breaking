@@ -30,45 +30,11 @@ pub struct ApiComparator<'tcx> {
     tcx: TyCtxt<'tcx>,
 }
 
-/// This struct holds a public item's path,
-/// and anything relevant to identify a breaking change or not.
-#[derive(Eq)]
-pub enum Item {
-    Fn(String),
-}
-
-impl Item {
-    pub fn path(&self) -> &str {
-        match self {
-            Self::Fn(path) => path.as_str(),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl PartialOrd for Item {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Item {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.path().cmp(other.path())
-    }
-}
-
-impl PartialEq for Item {
-    fn eq(&self, other: &Self) -> bool {
-        self.path() == other.path()
-    }
-}
-
-#[derive(Eq)]
-pub enum Diff {
-    Addition(Item),
-    Edition(Item, Item),
-    Deletion(Item),
+#[derive(Debug, Eq)]
+pub(crate) enum Diff {
+    Addition(ApiItem),
+    Edition(ApiItem, ApiItem),
+    Deletion(ApiItem),
 }
 
 impl Ord for Diff {
@@ -99,21 +65,60 @@ impl PartialEq for Diff {
     }
 }
 
-impl From<ApiItem> for Item {
-    fn from(ai: ApiItem) -> Self {
-        // TODO [sasha]: figure this out :upside_down_face:
-        todo!()
+impl Display for Diff {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let (kind, path) = self.kind_and_path();
+        write!(f, "{} {}", kind, path)
     }
 }
 
 impl Diff {
-    pub fn from_path_and_changes(path: String, changes: (Option<Item>, Option<Item>)) -> Self {
+    pub fn from_path_and_changes(
+        path: String,
+        changes: (Option<ApiItem>, Option<ApiItem>),
+    ) -> Self {
         match (changes.0, changes.1) {
             (None, Some(c)) => Self::Addition(c),
             (Some(c), None) => Self::Deletion(c),
             (Some(p), Some(n)) => Self::Edition(p, n),
             _ => panic!("NONE AND NONE WTF"),
         }
+    }
+
+    fn kind_and_path(&self) -> (DiffKind, &str) {
+        match self {
+            Diff::Addition(item) => (DiffKind::Addition, item.path()),
+
+            Diff::Edition(prev, next) => {
+                let p = prev.path();
+
+                // The pathes for both the previous and next items should be
+                // the same. Let's enforce this invariant on debug builds.
+                debug_assert_eq!(p, next.path());
+
+                (DiffKind::Edition, p)
+            }
+
+            Diff::Deletion(item) => (DiffKind::Deletion, item.path()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum DiffKind {
+    Addition,
+    Edition,
+    Deletion,
+}
+
+impl Display for DiffKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            DiffKind::Addition => '+',
+            DiffKind::Edition => '≠',
+            DiffKind::Deletion => '-',
+        }
+        .fmt(f)
     }
 }
 
@@ -137,16 +142,16 @@ impl<'tcx> ApiComparator<'tcx> {
         })
     }
 
-    fn get_paths_and_api_changes(self) -> HashMap<String, (Option<Item>, Option<Item>)> {
+    fn get_paths_and_api_changes(self) -> HashMap<String, (Option<ApiItem>, Option<ApiItem>)> {
         let mut paths_and_api_changes = self
             .previous
             .items()
             .into_iter()
-            .map(|(key, value)| (key, (Some(value.into()), None)))
-            .collect::<HashMap<String, (Option<Item>, Option<Item>)>>();
+            .map(|(key, value)| (key, (Some(value), None)))
+            .collect::<HashMap<String, (Option<ApiItem>, Option<ApiItem>)>>();
         for (key, value) in self.next.items().into_iter() {
             let mut entry = paths_and_api_changes.entry(key).or_insert((None, None));
-            entry.1 = Some(value.into());
+            entry.1 = Some(value);
         }
         paths_and_api_changes
     }

@@ -1,15 +1,15 @@
 mod functions;
 mod modules;
 
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
 use rustc_span::def_id::DefId;
 
-use crate::diagnosis::DiagnosticGenerator;
+use crate::{diagnosis::DiagnosticGenerator, glue::Change};
 
-use self::{functions::FnMetadata, modules::ModMetadata};
+pub(crate) use self::{functions::FnMetadata, modules::ModMetadata};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PublicApi {
@@ -54,7 +54,7 @@ impl PublicApi {
             match def_kind {
                 DefKind::Mod => self.visit_pub_mod(tcx, *def_id),
 
-                DefKind::Fn => self.add_item(tcx, *def_id, FnMetadata::new(*def_id)),
+                DefKind::Fn => self.add_item(tcx, *def_id, FnMetadata::new(tcx, *def_id)),
 
                 _ => continue,
             }
@@ -77,10 +77,46 @@ impl PublicApi {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ApiItem {
     Fn(FnMetadata),
     Mod(ModMetadata),
+}
+
+impl ApiItem {
+    pub(crate) fn path(&self) -> &str {
+        match self {
+            ApiItem::Fn(f) => f.path(),
+            ApiItem::Mod(_) => todo!(),
+        }
+    }
+
+    pub(crate) fn kind(&self) -> ApiItemKind {
+        match self {
+            ApiItem::Fn(_) => ApiItemKind::Fn,
+            ApiItem::Mod(_) => todo!(),
+        }
+    }
+
+    pub(crate) fn generate_changes(prev: ApiItem, next: ApiItem) -> Option<Change> {
+        match (prev, next) {
+            (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::generate_changes(prev, next),
+            (ApiItem::Mod(_), ApiItem::Mod(_)) => todo!(),
+            _ => unreachable!("Attempt to generate changes for two different-kinded types"),
+        }
+    }
+}
+
+impl PartialOrd for ApiItem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ApiItem {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.path().cmp(other.path())
+    }
 }
 
 impl From<ModMetadata> for ApiItem {
@@ -95,13 +131,7 @@ impl From<FnMetadata> for ApiItem {
     }
 }
 
-impl DiagnosticGenerator for ApiItem {
-    // TODO: this is horribly incorrect.
-
-    fn def_id(&self) -> DefId {
-        match self {
-            ApiItem::Fn(f) => f.def_id(),
-            ApiItem::Mod(m) => m.def_id(),
-        }
-    }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ApiItemKind {
+    Fn,
 }

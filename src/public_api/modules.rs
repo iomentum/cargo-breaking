@@ -3,7 +3,7 @@ use rustc_span::def_id::DefId;
 
 use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ModMetadata(pub(crate) DefId);
 
 impl ModMetadata {
