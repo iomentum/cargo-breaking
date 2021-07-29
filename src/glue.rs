@@ -136,8 +136,8 @@ pub(crate) enum Change {
 impl Ord for Change {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (&self, &other) {
-            (&Self::Breaking(_), &Self::NonBreaking(_)) => Ordering::Greater,
-            (&Self::NonBreaking(_), &Self::Breaking(_)) => Ordering::Less,
+            (&Self::Breaking(_), &Self::NonBreaking(_)) => Ordering::Less,
+            (&Self::NonBreaking(_), &Self::Breaking(_)) => Ordering::Greater,
             (&Self::Breaking(previous), &Self::Breaking(next)) => previous.cmp(&next),
             (&Self::NonBreaking(previous), &Self::NonBreaking(next)) => previous.cmp(&next),
         }

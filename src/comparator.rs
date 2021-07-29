@@ -39,17 +39,12 @@ pub(crate) enum Diff {
 
 impl Ord for Diff {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (&self, &other) {
-            (&Self::Deletion(previous), &Self::Deletion(next)) => previous.cmp(&next),
-            (&Self::Deletion(_), _) => Ordering::Less,
-            (_, &Self::Deletion(_)) => Ordering::Greater,
-            (&Self::Edition(p1, n1), &Self::Edition(p2, n2)) => {
-                p1.cmp(&p2).then_with(|| n1.cmp(&n2))
-            }
-            (&Self::Edition(_, _), _) => Ordering::Less,
-            (_, &Self::Edition(_, _)) => Ordering::Greater,
-            (&Self::Addition(previous), &Self::Addition(next)) => previous.cmp(&next),
-        }
+        let (left_kind, left_path) = self.kind_and_path();
+        let (right_kind, right_path) = other.kind_and_path();
+
+        left_kind
+            .cmp(&right_kind)
+            .then_with(|| left_path.cmp(right_path))
     }
 }
 
@@ -104,11 +99,11 @@ impl Diff {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum DiffKind {
-    Addition,
-    Edition,
     Deletion,
+    Edition,
+    Addition,
 }
 
 impl Display for DiffKind {
