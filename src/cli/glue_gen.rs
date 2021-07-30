@@ -71,6 +71,13 @@ impl GlueCrateGenerator {
     }
 
     fn change_current_version(&self, glue_path: &Path) -> AnyResult<()> {
+        // Cargo currently does not handle cases where two package with the same
+        // name and the same version are included in a Cargo.toml, even if they
+        // are both renamed. As such, we must ensure that the version of each
+        // package is different. The best way to do that is to modify the
+        // content of the said Cargo.toml, and to append a different string at
+        // the end of the version string of each package.
+
         let manifest_path = glue_path
             .to_path_buf()
             .tap_mut(|p| p.push("current"))
@@ -99,6 +106,9 @@ impl GlueCrateGenerator {
     }
 
     fn change_previous_version(&self, glue_path: &Path) -> AnyResult<()> {
+        // See comment on `GlueCrateGenerator::change_current_version`, which
+        // explains why we need to change the crate versions.
+
         let manifest_path = glue_path
             .to_path_buf()
             .tap_mut(|p| p.push("previous"))
@@ -148,6 +158,12 @@ impl GlueCrateGenerator {
 }
 
 fn append_to_package_version(manifest_path: &Path, to_append: &str) -> AnyResult<()> {
+    // We're currently altering the content of the manifest file by
+    // deserializing it, modifying the deserialized struct, and serializing
+    // it back to the initial path.
+    //
+    // This may not be the best thing to do, but it works quite well for now.
+
     let mut manifest = Manifest::from_path(manifest_path).with_context(|| {
         format!(
             "Failed to read manifest file at `{}`",
