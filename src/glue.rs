@@ -198,9 +198,3 @@ fn get_changeset(comparator: impl Comparator) -> AnyResult<ChangeSet> {
 
     Ok(ChangeSet::from_diffs(diffs))
 }
-
-fn get_diagnosis(tcx: TyCtxt) -> AnyResult<ApiCompatibilityDiagnostics> {
-    let stuff = ApiComparator::from_tcx(tcx)?.run();
-
-    Ok(stuff)
-}

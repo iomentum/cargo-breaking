@@ -150,39 +150,6 @@ impl<'tcx> ApiComparator<'tcx> {
         }
         paths_and_api_changes
     }
-
-    // TODO: -_-
-    pub fn run(self) -> ApiCompatibilityDiagnostics {
-        todo!();
-        // let mut collector = DiagnosisCollector::new();
-
-        // self.item_removals(&mut collector);
-        // self.item_modifications(&mut collector);
-        // self.item_additions(&mut collector);
-
-        // let mut diags = collector.finalize();
-        // diags.sort();
-
-        // ApiCompatibilityDiagnostics { diags }
-    }
-
-    // fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
-    //     map_difference(self.previous.items(), self.next.items())
-    //         .for_each(|(_, kind)| kind.removal_diagnosis(&self.tcx, diagnosis_collector))
-    // }
-
-    // fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
-    //     map_modifications(self.previous.items(), self.next.items()).for_each(
-    //         |(_, kind_a, kind_b)| {
-    //             kind_a.modification_diagnosis(kind_b, &self.tcx, diagnosis_collector)
-    //         },
-    //     )
-    // }
-
-    // fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
-    //     map_difference(self.next.items(), self.previous.items())
-    //         .for_each(|(_, kind)| kind.addition_diagnosis(&self.tcx, diagnosis_collector))
-    // }
 }
 
 impl<'tcx> Comparator for ApiComparator<'tcx> {
