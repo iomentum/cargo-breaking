@@ -1,29 +1,30 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
-use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
+use crate::{
+    diagnosis::{DiagnosisCollector, DiagnosticGenerator},
+    glue::Change,
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ModMetadata(pub(crate) DefId);
-
-impl ModMetadata {
-    pub(crate) fn new(def_id: DefId) -> ModMetadata {
-        ModMetadata(def_id)
-    }
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ModMetadata {
+    path: String,
 }
 
-impl DiagnosticGenerator for ModMetadata {
-    fn def_id(&self) -> DefId {
-        self.0
+impl ModMetadata {
+    pub(crate) fn new(tcx: &TyCtxt, id: DefId) -> ModMetadata {
+        let path = tcx.def_path(id).to_string_no_crate_verbose();
+
+        ModMetadata { path }
     }
 
-    fn modification_diagnosis(
-        &self,
-        _other: &ModMetadata,
-        _tcx: &TyCtxt,
-        _collector: &mut DiagnosisCollector,
-    ) {
-        // If the module is defined (and public) on both the previous and
-        // current version, then there's no modification.
+    pub(crate) fn path(&self) -> &str {
+        self.path.as_str()
+    }
+
+    pub(crate) fn generate_changes(prev: ModMetadata, next: ModMetadata) -> Option<Change> {
+        // A public module has no other properties than *existing*, so there's
+        // no possible change to emit.
+        None
     }
 }

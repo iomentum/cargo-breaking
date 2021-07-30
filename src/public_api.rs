@@ -39,7 +39,7 @@ impl PublicApi {
     }
 
     fn visit_pub_mod(&mut self, tcx: &TyCtxt, def_id: DefId) {
-        self.add_item(tcx, def_id, ModMetadata::new(def_id));
+        self.add_item(tcx, def_id, ModMetadata::new(tcx, def_id));
 
         for item in tcx.item_children(def_id) {
             match &item.vis {
@@ -101,7 +101,8 @@ impl ApiItem {
     pub(crate) fn generate_changes(prev: ApiItem, next: ApiItem) -> Option<Change> {
         match (prev, next) {
             (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::generate_changes(prev, next),
-            (ApiItem::Mod(_), ApiItem::Mod(_)) => todo!(),
+            (ApiItem::Mod(prev), ApiItem::Mod(next)) => ModMetadata::generate_changes(prev, next),
+
             _ => unreachable!("Attempt to generate changes for two different-kinded types"),
         }
     }
