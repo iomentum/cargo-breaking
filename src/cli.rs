@@ -1,11 +1,16 @@
 mod git;
 mod glue_gen;
 mod manifest;
+mod standard_compiler;
 
 use std::{
     env,
+    io::{self, Write},
     process::{self, Command},
 };
+
+use rustc_driver::{Callbacks, RunCompiler};
+use rustc_interface::Config;
 
 use anyhow::{bail, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
@@ -14,6 +19,7 @@ use semver::Version;
 use self::{
     glue_gen::{GlueCrate, GlueCrateGenerator},
     manifest::Manifest,
+    standard_compiler::StandardCompiler,
 };
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
@@ -119,11 +125,19 @@ impl ProgramInvocation {
     }
 
     fn fallback_to_rustc() -> ! {
-        let exec_status = Command::new("rustc").args(env::args().skip(2)).status();
-        match exec_status {
-            Ok(_) => process::exit(0),
-            Err(e) => panic!("Failed to execute rustc: {}", e),
-        }
+        let args = env::args().skip(1).collect::<Vec<_>>();
+
+        let compiler = match StandardCompiler::from_args(args) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{:#?}", e);
+                process::exit(101);
+            }
+        };
+
+        let exit_code = compiler.run().map(|()| 0).unwrap_or(101);
+
+        process::exit(exit_code);
     }
 }
 
@@ -134,6 +148,8 @@ fn invoke_cargo(glue_crate: &GlueCrate) -> AnyResult<()> {
     let status = Command::new("cargo")
         .env(RUN_WITH_CARGO_ENV_VARIABLE, "1")
         .env("RUSTC_WRAPPER", executable_path)
+        .env("RUSTFLAGS", "-A warnings")
+        .arg("+nightly")
         .arg("check")
         .arg("--manifest-path")
         .arg(glue_crate.manifest_path())
