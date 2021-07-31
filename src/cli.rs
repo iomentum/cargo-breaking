@@ -34,8 +34,10 @@ impl BuildEnvironment {
     pub(crate) fn from_cli() -> AnyResult<BuildEnvironment> {
         match ProgramInvocation::parse() {
             ProgramInvocation::FromCargo { args } => {
-                let initial_version =
-                    Self::fetch_initial_version().context("Failed to get initial crate version")?;
+                let initial_version = Manifest::from_env()
+                    .context("Failed to get manifest file")?
+                    .version()
+                    .clone();
 
                 Ok(BuildEnvironment {
                     args,
@@ -67,10 +69,6 @@ impl BuildEnvironment {
 
     pub(crate) fn initial_version(&self) -> &Version {
         &self.initial_version
-    }
-
-    fn fetch_initial_version() -> AnyResult<Version> {
-        manifest::get_crate_version("previous/Cargo.toml")
     }
 }
 

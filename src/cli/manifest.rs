@@ -32,22 +32,8 @@ impl Manifest {
     pub(crate) fn package_name(&self) -> &str {
         &self.package_name
     }
-}
 
-pub(crate) fn get_crate_version<P: AsRef<Path>>(manifest_path: P) -> AnyResult<Version> {
-    let m = load_manifest(manifest_path.as_ref())?;
-    get_version_from_manifest(&m).context("Failed to get version from crate manifest")
-}
-
-fn load_manifest(manifest_path: &Path) -> AnyResult<ComplexManifest> {
-    ComplexManifest::from_path(manifest_path).context("Failed to load crate manifest")
-}
-
-fn get_version_from_manifest(m: &ComplexManifest) -> AnyResult<Version> {
-    let unparsed_version = match &m.package {
-        Some(package) => &package.version,
-        None => bail!("Expected a package, found a workspace"),
-    };
-
-    Version::parse(unparsed_version.as_str()).context("Failed to parser version string")
+    pub(crate) fn version(&self) -> &Version {
+        &self.version
+    }
 }
