@@ -62,6 +62,10 @@ impl StandardCompiler {
         Ok(format!("--sysroot={}", sysroot_path.trim()))
     }
 
+    fn is_print_request(config: &Config) -> bool {
+        !config.opts.prints.is_empty()
+    }
+
     fn ask_to_rustc(&self) -> AnyResult<String> {
         let stdout = Command::new("rustc")
             .arg("+nightly")
@@ -79,7 +83,7 @@ impl StandardCompiler {
 
 impl Callbacks for StandardCompiler {
     fn config(&mut self, config: &mut Config) {
-        if !config.opts.prints.is_empty() {
+        if Self::is_print_request(config) {
             // When `cargo {check,build,test}` is invoked, cargo runs rustc
             // with specific arguments in order to get more context of what
             // happens. Rustc "responds" to cargo by printing the requested
@@ -95,7 +99,6 @@ impl Callbacks for StandardCompiler {
             {
                 Ok(output) => {
                     println!("{}", output.trim());
-                    io::stdout().lock().flush().unwrap();
 
                     // Exiting earlier allows us to ensure that we won't try
                     // to compile some code.
