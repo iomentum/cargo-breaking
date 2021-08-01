@@ -17,8 +17,8 @@ use rustc_interface::Config;
 /// compiler we use for dependency building has the exact same version as the
 /// compiler we use to get the diagnosis.
 ///
-/// In some situations, we need to fallback to the nightly rustc installed on
-/// the user's machine. These situations are documented below.
+/// That does not mean that we don't need the nightly compiler: we still need
+/// in order to get the sysroot path.
 pub(crate) struct StandardCompiler {
     args: Vec<String>,
 }
@@ -61,55 +61,6 @@ impl StandardCompiler {
 
         Ok(format!("--sysroot={}", sysroot_path.trim()))
     }
-
-    fn is_print_request(config: &Config) -> bool {
-        !config.opts.prints.is_empty()
-    }
-
-    fn ask_to_rustc(&self) -> AnyResult<String> {
-        let stdout = Command::new("rustc")
-            .arg("+nightly")
-            .args(self.args.iter().skip(1))
-            .output()
-            .context("Failed to run rustc")?
-            .stdout;
-
-        Ok(String::from_utf8(stdout)
-            .context("Failed to convert rustc output to utf-8")?
-            .trim()
-            .to_string())
-    }
 }
 
-impl Callbacks for StandardCompiler {
-    fn config(&mut self, config: &mut Config) {
-        if Self::is_print_request(config) {
-            // When `cargo {check,build,test}` is invoked, cargo runs rustc
-            // with specific arguments in order to get more context of what
-            // happens. Rustc "responds" to cargo by printing the requested
-            // data to stdout.
-            //
-            // For some reasons, we can't get these infos via the rustc api.
-            // As such, we call the system rustc and ask it what cargo wants,
-            // then print that to stdout.
-
-            match self
-                .ask_to_rustc()
-                .context("Failed to get code data from rustc")
-            {
-                Ok(output) => {
-                    println!("{}", output.trim());
-
-                    // Exiting earlier allows us to ensure that we won't try
-                    // to compile some code.
-
-                    process::exit(0);
-                }
-                Err(e) => {
-                    eprintln!("{:#?}", e);
-                    process::exit(101);
-                }
-            }
-        }
-    }
-}
+impl Callbacks for StandardCompiler {}
