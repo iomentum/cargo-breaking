@@ -102,40 +102,7 @@ impl DiagnosisItem {
 
 impl Display for DiagnosisItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-<<<<<<< HEAD
-        write!(f, "{} {}", self.kind, self.path)?;
-
-        if let Some(trait_) = &self.trait_impl {
-            write!(f, ": {}", trait_)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[cfg(test)]
-impl Parse for DiagnosisItem {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItem> {
-        let kind = input.parse()?;
-        let path = input.parse()?;
-
-        let trait_impl = if input.peek(Token![:]) {
-            input.parse::<Token![:]>().unwrap();
-            input.parse::<Token![impl]>().unwrap();
-
-            Some(input.parse()?)
-        } else {
-            None
-        };
-
-        Ok(DiagnosisItem {
-            kind,
-            path,
-            trait_impl,
-        })
-=======
         write!(f, "{} {}", self.kind, self.path)
->>>>>>> upstream/rustc-backend
     }
 }
 
