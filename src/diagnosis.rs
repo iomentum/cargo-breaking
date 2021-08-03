@@ -1,14 +1,7 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use syn::Ident;
-
-#[cfg(test)]
-use syn::{
-    parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
-};
-
-use crate::public_api::ItemPath;
+use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::DefId;
 
 pub struct DiagnosisCollector {
     inner: Vec<DiagnosisItem>,
@@ -29,53 +22,68 @@ impl DiagnosisCollector {
 }
 
 pub(crate) trait DiagnosticGenerator {
-    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::removal(path.clone(), None));
+    fn removal_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::removal(self.path(tcx)));
     }
 
+    // TODO: this function is supposed to be called each time the DefId of the
+    // previous and current crates is not equal. As they have different
+    // CrateNum, they are almost guaranteed to not be equal, even if they
+    // define the exact same thing.
+    // Consequently, it is very common that this method is called even when
+    // there's no actual modification to report. As such, it would be a good
+    // idea to find a better name for the method.
+    //
+    // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_hir/def_id/struct.DefId.html
     fn modification_diagnosis(
         &self,
         _other: &Self,
-        path: &ItemPath,
+        tcx: &TyCtxt,
         collector: &mut DiagnosisCollector,
     ) {
-        collector.add(DiagnosisItem::modification(path.clone(), None));
+        collector.add(DiagnosisItem::modification(self.path(tcx)));
     }
 
-    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::addition(path.clone(), None));
+    fn addition_diagnosis(&self, tcx: &TyCtxt, collector: &mut DiagnosisCollector) {
+        collector.add(DiagnosisItem::addition(self.path(tcx)));
+    }
+
+    // This getter allows us to provide a default implementation of other
+    // methods.
+    fn def_id(&self) -> DefId;
+
+    // Do not use def_path_str: it includes the crate from which the item comes
+    // from, which we do not want to print. Use this method instead.
+    fn path(&self, tcx: &TyCtxt) -> String {
+        tcx.def_path(self.def_id()).to_string_no_crate_verbose()
     }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
-    path: ItemPath,
-    trait_impl: Option<Ident>,
+    path: String,
 }
 
 impl DiagnosisItem {
-    pub(crate) fn removal(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn removal(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Removal,
             path,
-            trait_impl,
         }
     }
 
-    pub(crate) fn modification(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn modification(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Modification,
             path,
-            trait_impl,
         }
     }
 
-    pub(crate) fn addition(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn addition(path: String) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Addition,
             path,
-            trait_impl,
         }
     }
 
@@ -94,6 +102,7 @@ impl DiagnosisItem {
 
 impl Display for DiagnosisItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+<<<<<<< HEAD
         write!(f, "{} {}", self.kind, self.path)?;
 
         if let Some(trait_) = &self.trait_impl {
@@ -124,6 +133,9 @@ impl Parse for DiagnosisItem {
             path,
             trait_impl,
         })
+=======
+        write!(f, "{} {}", self.kind, self.path)
+>>>>>>> upstream/rustc-backend
     }
 }
 
@@ -142,68 +154,5 @@ impl Display for DiagnosisItemKind {
             DiagnosisItemKind::Addition => '+',
         }
         .fmt(f)
-    }
-}
-
-#[cfg(test)]
-impl Parse for DiagnosisItemKind {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItemKind> {
-        if input.peek(Token![-]) {
-            input.parse::<Token![-]>().unwrap();
-            Ok(DiagnosisItemKind::Removal)
-        } else if input.peek(Token![<]) {
-            input.parse::<Token![<]>().unwrap();
-            input.parse::<Token![>]>().unwrap();
-
-            Ok(DiagnosisItemKind::Modification)
-        } else if input.peek(Token![+]) {
-            input.parse::<Token![+]>().unwrap();
-            Ok(DiagnosisItemKind::Addition)
-        } else {
-            Err(input.error("Excepted `-`, `<>` or `+`"))
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use syn::parse_quote;
-
-    use super::*;
-
-    #[test]
-    fn display_implementation_standard_removal() {
-        let diag: DiagnosisItem = parse_quote! {
-            - foo::baz::Bar
-        };
-
-        assert_eq!(diag.to_string(), "- foo::baz::Bar");
-    }
-
-    #[test]
-    fn display_implementation_standard_modification() {
-        let diag: DiagnosisItem = parse_quote! {
-            <> foo::Bar
-        };
-
-        assert_eq!(diag.to_string(), "≠ foo::Bar");
-    }
-
-    #[test]
-    fn display_implementation_standard_addition() {
-        let diag: DiagnosisItem = parse_quote! {
-            + foo::bar::Baz
-        };
-
-        assert_eq!(diag.to_string(), "+ foo::bar::Baz");
-    }
-
-    #[test]
-    fn display_implementation_trait_impl() {
-        let diag: DiagnosisItem = parse_quote! {
-            <> foo::bar::Baz: impl Foo
-        };
-
-        assert_eq!(diag.to_string(), "≠ foo::bar::Baz: Foo");
     }
 }

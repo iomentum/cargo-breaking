@@ -1,3 +1,5 @@
+pub(crate) mod utils;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
@@ -6,11 +8,8 @@ use std::{
 
 use semver::{BuildMetadata, Prerelease, Version};
 
-use syn::{
-    braced,
-    parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
-};
+use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::CrateNum;
 
 use crate::{
     diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
@@ -23,16 +22,23 @@ pub struct ApiComparator {
 }
 
 impl ApiComparator {
-    pub(crate) fn new(previous: PublicApi, current: PublicApi) -> ApiComparator {
+    pub(crate) fn from_crate_nums(prev: CrateNum, curr: CrateNum, tcx: &TyCtxt) -> ApiComparator {
+        let previous_api = PublicApi::from_crate(tcx, prev.as_def_id());
+        let current_api = PublicApi::from_crate(tcx, curr.as_def_id());
+
+        ApiComparator::new(previous_api, current_api)
+    }
+
+    fn new(previous: PublicApi, current: PublicApi) -> ApiComparator {
         ApiComparator { previous, current }
     }
 
-    pub fn run(&self) -> ApiCompatibilityDiagnostics {
+    pub fn run(&self, tcx: &TyCtxt) -> ApiCompatibilityDiagnostics {
         let mut collector = DiagnosisCollector::new();
 
-        self.item_removals(&mut collector);
-        self.item_modifications(&mut collector);
-        self.item_additions(&mut collector);
+        self.item_removals(tcx, &mut collector);
+        self.item_modifications(tcx, &mut collector);
+        self.item_additions(tcx, &mut collector);
 
         let mut diags = collector.finalize();
         diags.sort();
@@ -40,40 +46,20 @@ impl ApiComparator {
         ApiCompatibilityDiagnostics { diags }
     }
 
-    fn item_removals(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_removals(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.previous.items(), self.current.items())
-            .for_each(|(path, kind)| kind.removal_diagnosis(path, diagnosis_collector))
+            .for_each(|(_, kind)| kind.removal_diagnosis(tcx, diagnosis_collector))
     }
 
-    fn item_modifications(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_modifications(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_modifications(self.previous.items(), self.current.items()).for_each(
-            |(path, kind_a, kind_b)| {
-                kind_a.modification_diagnosis(kind_b, path, diagnosis_collector)
-            },
+            |(_, kind_a, kind_b)| kind_a.modification_diagnosis(kind_b, tcx, diagnosis_collector),
         )
     }
 
-    fn item_additions(&self, diagnosis_collector: &mut DiagnosisCollector) {
+    fn item_additions(&self, tcx: &TyCtxt, diagnosis_collector: &mut DiagnosisCollector) {
         map_difference(self.current.items(), self.previous.items())
-            .for_each(|(path, kind)| kind.addition_diagnosis(path, diagnosis_collector))
-    }
-}
-
-impl Parse for ApiComparator {
-    fn parse(input: ParseStream) -> ParseResult<ApiComparator> {
-        let previous;
-        braced!(previous in input);
-
-        input.parse::<Token![,]>()?;
-
-        let current;
-        braced!(current in input);
-
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>().unwrap();
-        }
-
-        Ok(ApiComparator::new(previous.parse()?, current.parse()?))
+            .for_each(|(_, kind)| kind.addition_diagnosis(tcx, diagnosis_collector))
     }
 }
 
@@ -156,14 +142,6 @@ impl ApiCompatibilityDiagnostics {
     }
 }
 
-impl Parse for ApiCompatibilityDiagnostics {
-    fn parse(input: ParseStream) -> ParseResult<ApiCompatibilityDiagnostics> {
-        let comparator = input.parse::<ApiComparator>()?;
-
-        Ok(comparator.run())
-    }
-}
-
 fn map_difference<'a, K, V>(
     a: &'a HashMap<K, V>,
     b: &'a HashMap<K, V>,
@@ -189,20 +167,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use syn::parse_quote;
-
     use super::*;
 
     fn addition_diagnosis() -> DiagnosisItem {
-        parse_quote! { + foo::bar::baz }
+        DiagnosisItem::addition("foo::bar::baz".to_owned())
     }
 
     fn modification_diagnosis() -> DiagnosisItem {
-        parse_quote! { <> foo::bar::baz }
+        DiagnosisItem::modification("foo::bar::baz".to_owned())
     }
 
     fn removal_diagnosis() -> DiagnosisItem {
-        parse_quote! { - foo::bar::baz }
+        DiagnosisItem::removal("foo::bar::baz".to_owned())
     }
 
     macro_rules! compatibility_diag {
@@ -233,53 +209,6 @@ mod tests {
 
             let $name = $name;
         };
-    }
-
-    mod api_comparator {
-        use super::*;
-
-        #[test]
-        fn removal() {
-            let comparator: ApiComparator = parse_quote! {
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: usize) {}
-                        }
-                    }
-                },
-                {},
-            };
-
-            let left = comparator.run();
-            compatibility_diag!(right: removal);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn modification() {
-            let comparator: ApiComparator = parse_quote! {
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: usize) {}
-                        }
-                    }
-                },
-                {
-                    mod foo {
-                        mod bar {
-                            pub fn baz(n: u32) -> u32 {}
-                        }
-                    }
-                },
-            };
-            let left = comparator.run();
-            compatibility_diag!(right: modification);
-
-            assert_eq!(left, right);
-        }
     }
 
     mod api_compatibility_diagnostic {

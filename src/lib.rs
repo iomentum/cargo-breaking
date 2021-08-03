@@ -1,44 +1,47 @@
-mod ast;
+#![feature(rustc_private)]
+
+extern crate rustc_driver;
+extern crate rustc_error_codes;
+extern crate rustc_errors;
+extern crate rustc_hir;
+extern crate rustc_interface;
+extern crate rustc_middle;
+extern crate rustc_session;
+extern crate rustc_span;
+
 mod cli;
 mod comparator;
 mod diagnosis;
 mod git;
 mod glue;
-mod manifest;
 mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
+use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
-pub use glue::compare;
 
-use crate::{
-    comparator::ApiComparator,
-    git::{CrateRepo, GitBackend},
-};
+pub use comparator::utils::get_diff_from_sources;
 
 pub fn run() -> AnyResult<()> {
-    let config = cli::ProgramConfig::parse();
+    /*
+    let env =
+        cli::BuildEnvironment::from_cli().context("Failed to generate the build environment")?;
+        */
 
-    let mut repo = CrateRepo::current().context("Failed to fetch repository data")?;
+    let diff =
+        utils::get_diff_from_sources("pub fn foo() {}", "pub fn bar() {} pub fn foo(a: i32) {}")
+            .unwrap();
 
+    /*
     let version = manifest::get_crate_version().context("Failed to get crate version")?;
 
-    let current_api = glue::extract_api().context("Failed to get crate API")?;
-
-    let previous_api = repo.run_in(config.comparaison_ref.as_str(), || {
-        glue::extract_api().context("Failed to get crate API")
-    })??;
-
-    let api_comparator = ApiComparator::new(previous_api, current_api);
-
-    let diagnosis = api_comparator.run();
-
-    if !diagnosis.is_empty() {
-        println!("{}", diagnosis);
+    if !diff.is_empty() {
+        println!("{}", diff);
     }
 
-    let next_version = diagnosis.guess_next_version(version);
+    let next_version = diff.guess_next_version(version);
     println!("Next version is: {}", next_version);
+    */
 
     Ok(())
 }

@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::compatibility_diagnosis;
 
 #[test]
 fn private_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             fn fact(n: u32) -> u32 {}
@@ -15,7 +14,7 @@ fn private_is_not_reported() {
 
 #[test]
 fn addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub fn fact(n: u32) -> u32 {}
@@ -27,7 +26,7 @@ fn addition() {
 
 #[test]
 fn new_arg() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub fn fact() {}
         },
@@ -41,7 +40,7 @@ fn new_arg() {
 
 #[test]
 fn generic_order() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub fn f<T, E>() {}
         },
@@ -55,7 +54,7 @@ fn generic_order() {
 
 #[test]
 fn body_change_not_detected() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub fn fact() {}
         },
@@ -69,7 +68,7 @@ fn body_change_not_detected() {
 
 #[test]
 fn fn_arg_comma_is_removed() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub fn a(a: t, b: t, c: t,) {}
         },
@@ -83,7 +82,7 @@ fn fn_arg_comma_is_removed() {
 
 #[test]
 fn fn_arg_last_character_not_removed() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {
             pub fn a(a: t, b: t, c: t) {}
         },
@@ -101,8 +100,7 @@ fn empty_struct_kind_change_is_modification() {
 
     for (id_a, file_a) in files.iter().enumerate() {
         for (id_b, file_b) in files.iter().enumerate() {
-            let comparator = cargo_breaking::compare(file_a, file_b).unwrap();
-            let diff = comparator.run();
+            let diff = cargo_breaking::get_diff_from_sources(file_a, file_b).unwrap();
 
             if id_a != id_b {
                 assert_eq!(diff.to_string(), "≠ A\n");
@@ -115,7 +113,7 @@ fn empty_struct_kind_change_is_modification() {
 
 #[test]
 fn is_reported_lexicographically() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub fn a() {}
@@ -124,7 +122,7 @@ fn is_reported_lexicographically() {
     };
     assert_eq!(diff.to_string(), "+ a\n+ z\n");
 
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = compatibility_diagnosis! {
         {},
         {
             pub fn z() {}
