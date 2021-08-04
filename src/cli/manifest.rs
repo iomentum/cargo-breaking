@@ -1,7 +1,4 @@
-use std::path::Path;
-
 use anyhow::{bail, Context, Result as AnyResult};
-use cargo_toml::Manifest as ComplexManifest;
 use semver::Version;
 
 pub(crate) struct Manifest {
@@ -11,8 +8,8 @@ pub(crate) struct Manifest {
 
 impl Manifest {
     pub(crate) fn from_env() -> AnyResult<Manifest> {
-        let initial_manifest =
-            ComplexManifest::from_path("Cargo.toml").context("Failed to read manifest file")?;
+        let initial_manifest = cargo_toml::Manifest::from_path("Cargo.toml")
+            .context("Failed to read manifest file")?;
 
         let package = match initial_manifest.package {
             Some(package) => package,
