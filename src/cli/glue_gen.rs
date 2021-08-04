@@ -36,11 +36,9 @@ impl GlueCrateGenerator {
 
     // Returns the root path in which the glue crate is generated
     pub(super) fn generate(self) -> AnyResult<GlueCrate> {
-        let temp_dir = self
-            .create_temp_dir()
-            .context("Failed to create temporary directory")?;
+        let temp_dir = Self::create_temp_dir().context("Failed to create temporary directory")?;
 
-        self.generate_current_version(temp_dir.path())
+        Self::generate_current_version(temp_dir.path())
             .context("Failed to generate current crate")?;
 
         self.generate_previous_version(temp_dir.path())
@@ -52,16 +50,16 @@ impl GlueCrateGenerator {
         Ok(GlueCrate { temp_dir })
     }
 
-    fn create_temp_dir(&self) -> AnyResult<TempDir> {
+    fn create_temp_dir() -> AnyResult<TempDir> {
         tempfile::tempdir().map_err(AnyError::new)
     }
 
-    fn generate_current_version(&self, glue_path: &Path) -> AnyResult<()> {
-        self.copy_current_version(glue_path)?;
-        self.change_current_version(glue_path)
+    fn generate_current_version(glue_path: &Path) -> AnyResult<()> {
+        Self::copy_current_version(glue_path)?;
+        Self::change_current_version(glue_path)
     }
 
-    fn copy_current_version(&self, glue_path: &Path) -> AnyResult<()> {
+    fn copy_current_version(glue_path: &Path) -> AnyResult<()> {
         let dest = glue_path.to_path_buf().tap_mut(|p| p.push("current"));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
@@ -70,7 +68,7 @@ impl GlueCrateGenerator {
             .context("Failed to copy crate content")
     }
 
-    fn change_current_version(&self, glue_path: &Path) -> AnyResult<()> {
+    fn change_current_version(glue_path: &Path) -> AnyResult<()> {
         // Cargo currently does not handle cases where two package with the same
         // name and the same version are included in a Cargo.toml, even if they
         // are both renamed. As such, we must ensure that the version of each
