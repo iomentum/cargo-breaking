@@ -25,3 +25,6 @@ semver = "1.0"
 clap = "2.33"
 tap = "1.0"
 tempfile = "3.2"
+
+[package.metadata.rust-analyzer]
+rustc_private = true
