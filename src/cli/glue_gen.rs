@@ -176,7 +176,10 @@ fn append_to_package_version(manifest_path: &Path, to_append: &str) -> AnyResult
 
     package.version.push_str(to_append);
 
-    let new_toml = toml::to_string(&manifest).context("Failed to serialize manifest file")?;
+    // https://github.com/alexcrichton/toml-rs/issues/142#issuecomment-278970591
+    let as_toml_value =
+        toml::Value::try_from(&manifest).context("couldn't convert Manifest into a toml::Value")?;
+    let new_toml = toml::to_string(&as_toml_value).context("Failed to serialize manifest file")?;
 
     fs::write(&manifest_path, new_toml).with_context(|| {
         format!(
