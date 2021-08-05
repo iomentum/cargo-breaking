@@ -16,15 +16,23 @@ jobs:
 
     - uses: Swatinem/rust-cache@v1
 
-    - name: cargo test
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly-2021-07-26
+        components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
+
+    - name: cargo-test
       uses: actions-rs/cargo@v1
       with:
+        toolchain: nightly-2021-07-26
         command: test
         args: --workspace
 
-    - name: rustfmt
+    - name: cargo-fmt
       uses: actions-rs/cargo@v1
       with:
+        toolchain: nightly-2021-07-26
         command: fmt
         args: --all -- --check
 
@@ -32,6 +40,7 @@ jobs:
       uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        toolchain: nightly-2021-07-26
         args: --all-targets --all-features -- -D warnings
 
   test-osx:
@@ -42,10 +51,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: cargo test
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-07-26
+          components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
+
+      - name: cargo-test
         uses: actions-rs/cargo@v1
         with:
           command: test
+          toolchain: nightly-2021-07-26
           args: --workspace
 
   test-windows:
@@ -56,8 +72,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: cargo test
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-07-26
+          components: clippy, rustc-dev, rustfmt, rust-src, llvm-tools-preview
+
+      - name: cargo-test
         uses: actions-rs/cargo@v1
         with:
+          toolchain: nightly-2021-07-26
           command: test
           args: --workspace
