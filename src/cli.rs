@@ -132,17 +132,15 @@ impl ProgramInvocation {
     fn fallback_to_rustc() -> ! {
         let args = env::args().skip(1).collect::<Vec<_>>();
 
-        let compiler = match StandardCompiler::from_args(args) {
-            Ok(c) => c,
-            Err(e) => {
+        let exit_status = StandardCompiler::from_args(args)
+            .and_then(StandardCompiler::run)
+            .map(|()| 0)
+            .unwrap_or_else(|e| {
                 eprintln!("{:#?}", e);
-                process::exit(101);
-            }
-        };
+                101
+            });
 
-        let exit_code = compiler.run().map(|()| 0).unwrap_or(101);
-
-        process::exit(exit_code);
+        process::exit(exit_status);
     }
 }
 

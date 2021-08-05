@@ -3,7 +3,7 @@ use std::{
     process::{self, Command},
 };
 
-use anyhow::{Context, Result as AnyResult};
+use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, RunCompiler};
 use rustc_interface::Config;
@@ -37,12 +37,19 @@ impl StandardCompiler {
         Ok(StandardCompiler { args })
     }
 
-    pub(crate) fn run(mut self) -> Result<(), ()> {
+    pub(crate) fn run(mut self) -> AnyResult<()> {
+        // It is necessary to clone the arguments because we need to pass an
+        // &mut self to the compiler but also need to pass a reference to the
+        // argument passed via CLI. This leads to both a mutable reference and
+        // immutable reference being created at the same time, which is
+        // forbidden by the borrow checker.
+
         let args = self.args.clone();
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()
-            .map_err(drop)
+            .map_err(|e| anyhow!("{:?}", e))
+            .context("Failed to compile crate")
     }
 
     fn sysroot_path_arg() -> AnyResult<String> {
