@@ -22,14 +22,14 @@ version = "0.0.1"
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GlueCrateGenerator {
-    comparaison_ref: String,
+    comparison_ref: String,
     package_name: String,
 }
 
 impl GlueCrateGenerator {
-    pub(super) fn new(package_name: String, comparaison_ref: String) -> GlueCrateGenerator {
+    pub(super) fn new(package_name: String, comparison_ref: String) -> GlueCrateGenerator {
         GlueCrateGenerator {
-            comparaison_ref,
+            comparison_ref,
             package_name,
         }
     }
@@ -96,7 +96,7 @@ impl GlueCrateGenerator {
         let dest = glue_path.to_path_buf().tap_mut(|p| p.push("previous"));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
-        repo.run_in(self.comparaison_ref.as_str(), || {
+        repo.run_in(self.comparison_ref.as_str(), || {
             dir::copy(Path::new("."), dest, &CopyOptions::new())
                 .map(drop)
                 .context("Failed to copy crate content")

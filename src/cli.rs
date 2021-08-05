@@ -45,12 +45,12 @@ impl BuildEnvironment {
                 })
             }
 
-            ProgramInvocation::FromCli { comparaison_ref } => {
+            ProgramInvocation::FromCli { comparison_ref } => {
                 let manifest = Manifest::from_env()
                     .context("Failed to get information from the manifest file")?;
 
                 let glue_crate =
-                    GlueCrateGenerator::new(manifest.package_name().to_string(), comparaison_ref)
+                    GlueCrateGenerator::new(manifest.package_name().to_string(), comparison_ref)
                         .generate()
                         .context("Failed to generate glue crate")?;
 
@@ -78,7 +78,7 @@ enum ProgramInvocation {
         args: Vec<String>,
     },
     FromCli {
-        comparaison_ref: String,
+        comparison_ref: String,
     },
 }
 
@@ -107,9 +107,9 @@ impl ProgramInvocation {
                 )
                 .get_matches();
 
-            let comparaison_ref = args.value_of("against").unwrap().to_owned();
+            let comparison_ref = args.value_of("against").unwrap().to_owned();
 
-            ProgramInvocation::FromCli { comparaison_ref }
+            ProgramInvocation::FromCli { comparison_ref }
         }
     }
 
