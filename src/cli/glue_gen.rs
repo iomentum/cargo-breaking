@@ -4,12 +4,12 @@ use anyhow::{Context, Result as AnyResult};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GlueCrateGenerator {
-    comparaison_ref: String,
+    comparison_ref: String,
 }
 
 impl GlueCrateGenerator {
-    pub(super) fn new(comparaison_ref: String) -> GlueCrateGenerator {
-        GlueCrateGenerator { comparaison_ref }
+    pub(super) fn new(comparison_ref: String) -> GlueCrateGenerator {
+        GlueCrateGenerator { comparison_ref }
     }
 
     // Returns the root path in which the glue crate is generated

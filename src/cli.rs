@@ -33,8 +33,8 @@ impl BuildEnvironment {
                 })
             }
 
-            ProgramInvocation::FromCli { comparaison_ref } => {
-                let glue_crate = GlueCrateGenerator::new(comparaison_ref)
+            ProgramInvocation::FromCli { comparison_ref } => {
+                let glue_crate = GlueCrateGenerator::new(comparison_ref)
                     .generate()
                     .context("Failed to generate glue crate")?;
 
@@ -66,7 +66,7 @@ enum ProgramInvocation {
         args: Vec<String>,
     },
     FromCli {
-        comparaison_ref: String,
+        comparison_ref: String,
     },
 }
 
@@ -95,9 +95,9 @@ impl ProgramInvocation {
                 )
                 .get_matches();
 
-            let comparaison_ref = args.value_of("against").unwrap().to_owned();
+            let comparison_ref = args.value_of("against").unwrap().to_owned();
 
-            ProgramInvocation::FromCli { comparaison_ref }
+            ProgramInvocation::FromCli { comparison_ref }
         }
     }
 
