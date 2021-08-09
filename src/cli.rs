@@ -123,12 +123,13 @@ impl ProgramInvocation {
     }
 
     /// Runs the Rust compiler bundled in the binary with the same arguments
-    /// as what was provided when the program was invoked exits the process.
+    /// as what was provided when the program was invoked then exits the
+    /// process.
     ///
     /// The exit code changes depending on whether if the compilation was
     /// successfull or not. If, for any reason, the compilation fails, then the
-    /// error is printed to stderr and the process exits earlier with exit code
-    /// 101. If the compilation was successfull, then the exit code is 0.
+    /// error is printed to stderr and the process exits with code 101. If the
+    /// compilation was successfull, then the exit code is 0.
     fn fallback_to_rustc() -> ! {
         let args = env::args().skip(1).collect::<Vec<_>>();
 
