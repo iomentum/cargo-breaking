@@ -48,8 +48,7 @@ impl StandardCompiler {
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()
-            .map_err(|e| anyhow!("{:?}", e))
-            .context("Failed to compile crate")
+            .map_err(|e| anyhow!("Failed to compile the crate"))
     }
 
     fn sysroot_path_arg() -> AnyResult<String> {
