@@ -1,12 +1,8 @@
-use std::{
-    io::{self, Write},
-    process::{self, Command},
-};
+use std::process::Command;
 
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, RunCompiler};
-use rustc_interface::Config;
 
 /// A non-instrumented compiler that tries to mimic the original rustc as much
 /// as possible.
@@ -48,7 +44,7 @@ impl StandardCompiler {
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()
-            .map_err(|e| anyhow!("Failed to compile the crate"))
+            .map_err(|_| anyhow!("Failed to compile the crate"))
     }
 
     fn sysroot_path_arg() -> AnyResult<String> {

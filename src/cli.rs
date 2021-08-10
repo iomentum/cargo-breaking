@@ -1,26 +1,17 @@
 mod git;
-mod glue_gen;
-mod manifest;
+pub mod glue_gen;
 mod standard_compiler;
 
-use std::{
-    env,
-    io::{self, Write},
-    process::{self, Command},
-};
+use crate::comparator::utils;
 
-use rustc_driver::{Callbacks, RunCompiler};
-use rustc_interface::Config;
+use std::{env, process::Command};
 
 use anyhow::{bail, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
-use self::{
-    glue_gen::{GlueCrate, GlueCrateGenerator},
-    manifest::Manifest,
-    standard_compiler::StandardCompiler,
-};
+use self::{glue_gen::GlueCrate, standard_compiler::StandardCompiler};
+use crate::manifest::Manifest;
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
 const GLUE_CRATE_NAME: &str = "glue";
@@ -31,66 +22,49 @@ pub(crate) struct BuildEnvironment {
 }
 
 impl BuildEnvironment {
-    pub(crate) fn from_cli() -> AnyResult<BuildEnvironment> {
-        match ProgramInvocation::parse() {
-            ProgramInvocation::FromCargo { args } => {
-                let initial_version = Manifest::from_env()
-                    .context("Failed to get manifest file")?
-                    .version()
-                    .clone();
+    pub(crate) fn from_args(args: Vec<String>) -> AnyResult<Self> {
+        // TODO: make sure it s correct
+        let initial_version = Manifest::from_env()
+            .context("Failed to get manifest file")?
+            .version()
+            .clone();
 
-                Ok(BuildEnvironment {
-                    args,
-                    initial_version,
-                })
-            }
+        Ok(Self {
+            args,
+            initial_version,
+        })
+    }
 
-            ProgramInvocation::FromCli { comparison_ref } => {
-                let manifest = Manifest::from_env()
-                    .context("Failed to get information from the manifest file")?;
-
-                let glue_crate =
-                    GlueCrateGenerator::new(manifest.package_name().to_string(), comparison_ref)
-                        .generate()
-                        .context("Failed to generate glue crate")?;
-
-                invoke_cargo(&glue_crate).context("cargo invocation failed")?;
-
-                drop(glue_crate);
-
-                process::exit(0)
-            }
+    pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
+        todo!("hf gl :upside_down:");
+        // todo: use the actual diff \o/
+        let diff = utils::get_diff_from_sources(
+            "pub fn foo() {}",
+            "pub fn bar() {} pub fn foo(a: i32) {}",
+        )
+        .unwrap();
+        if !diff.is_empty() {
+            println!("{}", diff);
         }
-    }
 
-    pub(crate) fn args(&self) -> &[String] {
-        &self.args
-    }
-
-    pub(crate) fn initial_version(&self) -> &Version {
-        &self.initial_version
+        let next_version = diff.guess_next_version(self.initial_version);
+        println!("Next version is: {}", next_version);
+        Ok(())
     }
 }
 
-enum ProgramInvocation {
-    FromCargo {
-        // We discard the initial `rustc` argument
-        args: Vec<String>,
-    },
-    FromCli {
-        comparison_ref: String,
-    },
+/// InvocationContext gathers information from the environment
+/// It will let us know how cargo-breaking was invoked (cli/cargo command etc.)
+pub(crate) enum InvocationContext {
+    FromCargo { args: Vec<String> },
+    FromCli { comparison_ref: String },
 }
 
-impl ProgramInvocation {
-    fn parse() -> ProgramInvocation {
+impl InvocationContext {
+    pub fn from_env() -> InvocationContext {
         if Self::is_run_by_cargo() {
-            if Self::must_build_glue() {
-                ProgramInvocation::FromCargo {
-                    args: env::args().skip(1).collect(),
-                }
-            } else {
-                Self::fallback_to_rustc()
+            Self::FromCargo {
+                args: env::args().skip(1).collect(),
             }
         } else {
             let args = App::new(crate_name!())
@@ -109,7 +83,7 @@ impl ProgramInvocation {
 
             let comparison_ref = args.value_of("against").unwrap().to_owned();
 
-            ProgramInvocation::FromCli { comparison_ref }
+            InvocationContext::FromCli { comparison_ref }
         }
     }
 
@@ -117,9 +91,9 @@ impl ProgramInvocation {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
     }
 
-    fn must_build_glue() -> bool {
-        let arg_value = env::args().nth(3);
-        matches!(arg_value.as_deref(), Some(GLUE_CRATE_NAME))
+    pub(crate) fn build_a_dependency(args: &[String]) -> bool {
+        let arg_value = args.get(2);
+        arg_value.map(String::as_str) != Some(GLUE_CRATE_NAME)
     }
 
     /// Runs the Rust compiler bundled in the binary with the same arguments
@@ -130,22 +104,16 @@ impl ProgramInvocation {
     /// successfull or not. If, for any reason, the compilation fails, then the
     /// error is printed to stderr and the process exits with code 101. If the
     /// compilation was successfull, then the exit code is 0.
-    fn fallback_to_rustc() -> ! {
+    pub(crate) fn fallback_to_rustc() -> AnyResult<()> {
         let args = env::args().skip(1).collect::<Vec<_>>();
 
-        let exit_status = StandardCompiler::from_args(args)
+        StandardCompiler::from_args(args)
             .and_then(StandardCompiler::run)
-            .map(|()| 0)
-            .unwrap_or_else(|e| {
-                eprintln!("{:#?}", e);
-                101
-            });
-
-        process::exit(exit_status);
+            .context("Failed to run the fallback compiler")
     }
 }
 
-fn invoke_cargo(glue_crate: &GlueCrate) -> AnyResult<()> {
+pub(crate) fn invoke_cargo(glue_crate: GlueCrate) -> AnyResult<()> {
     let executable_path =
         env::current_exe().context("Failed to get `cargo-breaking` executable path")?;
 

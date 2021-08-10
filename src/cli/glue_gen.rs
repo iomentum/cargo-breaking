@@ -21,13 +21,13 @@ version = "0.0.1"
 "#;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct GlueCrateGenerator {
+pub(crate) struct GlueCrateGenerator {
     comparison_ref: String,
     package_name: String,
 }
 
 impl GlueCrateGenerator {
-    pub(super) fn new(package_name: String, comparison_ref: String) -> GlueCrateGenerator {
+    pub(crate) fn new(package_name: String, comparison_ref: String) -> GlueCrateGenerator {
         GlueCrateGenerator {
             comparison_ref,
             package_name,
@@ -35,7 +35,7 @@ impl GlueCrateGenerator {
     }
 
     // Returns the root path in which the glue crate is generated
-    pub(super) fn generate(self) -> AnyResult<GlueCrate> {
+    pub(crate) fn generate(self) -> AnyResult<GlueCrate> {
         let temp_dir = Self::create_temp_dir().context("Failed to create temporary directory")?;
 
         Self::generate_current_version(temp_dir.path())
@@ -195,7 +195,7 @@ pub(crate) struct GlueCrate {
 }
 
 impl GlueCrate {
-    pub(super) fn manifest_path(&self) -> PathBuf {
+    pub(crate) fn manifest_path(&self) -> PathBuf {
         self.temp_dir
             .path()
             .to_path_buf()

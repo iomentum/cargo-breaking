@@ -1,30 +1,12 @@
-use std::process::Command;
-
 use anyhow::{anyhow, Context, Result as AnyResult};
 
-use rustc_driver::{Callbacks, Compilation, RunCompiler};
-use rustc_errors::ErrorReported;
+use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::Config;
 use rustc_middle::{middle::cstore::ExternCrateSource, ty::TyCtxt};
 use rustc_session::config::Input;
 use rustc_span::{def_id::CrateNum, FileName};
 
-use crate::{comparator::ApiComparator, public_api::PublicApi, ApiCompatibilityDiagnostics};
-
-fn run_compiler(mut args: Vec<String>) -> Result<(), ErrorReported> {
-    let out = Command::new("rustc")
-        .arg("--print=sysroot")
-        .current_dir(".")
-        .output()
-        .unwrap();
-    let sysroot = String::from_utf8(out.stdout).unwrap();
-
-    args.push(format!("--sysroot={}", sysroot.trim()));
-
-    let mut compiler = Compiler;
-
-    RunCompiler::new(args.as_slice(), &mut compiler).run()
-}
+use crate::{comparator::ApiComparator, ApiCompatibilityDiagnostics};
 
 struct Compiler;
 

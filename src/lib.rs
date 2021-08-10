@@ -13,30 +13,44 @@ mod cli;
 mod comparator;
 mod diagnosis;
 mod glue;
+mod manifest;
 mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
-use comparator::utils;
+use cli::{BuildEnvironment, InvocationContext};
 pub use comparator::ApiCompatibilityDiagnostics;
+use manifest::Manifest;
+
+use crate::cli::glue_gen::GlueCrateGenerator;
 
 pub fn run() -> AnyResult<()> {
-    let env =
-        cli::BuildEnvironment::from_cli().context("Failed to generate the build environment")?;
+    // check who called us
+    match InvocationContext::from_env() {
+        // The user has invoked the application from the cli, we're going to set
+        // everything up,and let cargo call us back (which will fall into an
+        // other match branch)
+        InvocationContext::FromCli { comparison_ref } => {
+            let manifest =
+                Manifest::from_env().context("Failed to get information from the manifest file")?;
 
-    let diff =
-        utils::get_diff_from_sources("pub fn foo() {}", "pub fn bar() {} pub fn foo(a: i32) {}")
-            .unwrap();
+            let glue_crate =
+                GlueCrateGenerator::new(manifest.package_name().to_string(), comparison_ref)
+                    .generate()
+                    .context("Failed to generate glue crate")?;
 
-    /*
-    let version = manifest::get_crate_version().context("Failed to get crate version")?;
+            crate::cli::invoke_cargo(glue_crate).context("cargo invocation failed")
+        }
 
-    if !diff.is_empty() {
-        println!("{}", diff);
+        // Cargo has asked us to compile a dependency, there's no need to setup
+        // static analysis (yet ^_^)
+        InvocationContext::FromCargo { args } if InvocationContext::build_a_dependency(&args) => {
+            InvocationContext::fallback_to_rustc()
+        }
+
+        // Cargo has asked us to run on our glue crate, time to set up static
+        // analysis!
+        InvocationContext::FromCargo { args } => {
+            BuildEnvironment::from_args(args)?.run_static_analysis()
+        }
     }
-
-    let next_version = diff.guess_next_version(version);
-    println!("Next version is: {}", next_version);
-    */
-
-    Ok(())
 }
