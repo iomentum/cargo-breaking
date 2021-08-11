@@ -6,14 +6,24 @@ use crate::comparator::utils;
 
 use std::{env, process::Command};
 
-use anyhow::{bail, Context, Result as AnyResult};
+use anyhow::{bail, ensure, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
 use self::{glue_gen::GlueCrate, standard_compiler::StandardCompiler};
-use crate::manifest::Manifest;
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
+const INITIAL_VERSION_ENV_VARIABLE: &str = "INITIAL_VERSION";
+
+// TODO: this is very likely that we will fail to disambiguate the glue crate
+// (the one we're supposed to run static analysis on) and the `glue` crate
+// (the parser combinator framework, see link at the end of the todo).
+//
+// A simple way to disambiguate those two would be to add a bunch of random
+// chars at the end of the glue crate (perhaps with faker) and to pass this as
+// an environment variable.
+//
+// https://crates.io/crates/glue
 const GLUE_CRATE_NAME: &str = "glue";
 
 pub(crate) struct BuildEnvironment {
@@ -22,50 +32,68 @@ pub(crate) struct BuildEnvironment {
 }
 
 impl BuildEnvironment {
-    pub(crate) fn from_args(args: Vec<String>) -> AnyResult<Self> {
-        // TODO: make sure it s correct
-        let initial_version = Manifest::from_env()
-            .context("Failed to get manifest file")?
-            .version()
-            .clone();
-
-        Ok(Self {
+    pub(crate) fn new(args: Vec<String>, initial_version: Version) -> Self {
+        Self {
             args,
             initial_version,
-        })
+        }
     }
 
     pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
-        todo!("hf gl :upside_down:");
-        // todo: use the actual diff \o/
+        // TODO(scrabsha): use the API provided by the linked PR to produce a
+        // decent diff.
+        // https://github.com/iomentum/cargo-breaking/pull/28
+
         let diff = utils::get_diff_from_sources(
             "pub fn foo() {}",
             "pub fn bar() {} pub fn foo(a: i32) {}",
-        )
-        .unwrap();
+        )?;
+
         if !diff.is_empty() {
             println!("{}", diff);
         }
 
         let next_version = diff.guess_next_version(self.initial_version);
         println!("Next version is: {}", next_version);
+
         Ok(())
     }
 }
 
 /// InvocationContext gathers information from the environment
 /// It will let us know how cargo-breaking was invoked (cli/cargo command etc.)
+///
+/// There are three situations where cargo-breaking is invoked.
+///
+/// First, the user types `cargo breaking` in their shell. In this situation,
+/// we must set up the build environment and call Cargo on it.
+///
+/// Second, Cargo calls cargo-breaking and asks it to build a depencency. We
+/// must compile the said dependency the way the regular rustc would do.
+///
+/// Third, Cargo calls cargo-breaking on the glue crate. We msut perform static
+/// analysis and print the result to the user.
 pub(crate) enum InvocationContext {
-    FromCargo { args: Vec<String> },
+    /// The user invoked cargo-breaking by typing `cargo breaking`.
     FromCli { comparison_ref: String },
+
+    /// Cargo invoked cargo-breaking because it wants us to compile a crate.
+    ///
+    /// InvocationContext::should_build_a_depencency can be used to
+    /// disambiguate situation #2 and #3.
+    FromCargo {
+        args: Vec<String>,
+        initial_version: Version,
+    },
 }
 
 impl InvocationContext {
-    pub fn from_env() -> InvocationContext {
+    pub(crate) fn from_env() -> AnyResult<InvocationContext> {
         if Self::is_run_by_cargo() {
-            Self::FromCargo {
+            Ok(Self::FromCargo {
                 args: env::args().skip(1).collect(),
-            }
+                initial_version: Self::version_from_env()?,
+            })
         } else {
             let args = App::new(crate_name!())
                 .version(crate_version!())
@@ -83,7 +111,7 @@ impl InvocationContext {
 
             let comparison_ref = args.value_of("against").unwrap().to_owned();
 
-            InvocationContext::FromCli { comparison_ref }
+            Ok(InvocationContext::FromCli { comparison_ref })
         }
     }
 
@@ -91,34 +119,39 @@ impl InvocationContext {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
     }
 
-    pub(crate) fn build_a_dependency(args: &[String]) -> bool {
+    pub(crate) fn should_build_a_dependency(args: &[String]) -> bool {
+        // TODO: this is not clean and not future proof, as cargo may change
+        // its argument ordering at any moment.
+        //
+        // The best solution would be to `skip_while` until we meet
+        // `--crate-name` and take what comes next.
         let arg_value = args.get(2);
         arg_value.map(String::as_str) != Some(GLUE_CRATE_NAME)
     }
 
-    /// Runs the Rust compiler bundled in the binary with the same arguments
-    /// as what was provided when the program was invoked then exits the
-    /// process.
-    ///
-    /// The exit code changes depending on whether if the compilation was
-    /// successfull or not. If, for any reason, the compilation fails, then the
-    /// error is printed to stderr and the process exits with code 101. If the
-    /// compilation was successfull, then the exit code is 0.
-    pub(crate) fn fallback_to_rustc() -> AnyResult<()> {
-        let args = env::args().skip(1).collect::<Vec<_>>();
+    pub(crate) fn version_from_env() -> AnyResult<Version> {
+        env::var(INITIAL_VERSION_ENV_VARIABLE)
+            .context("Failed to fetch version environment variable")?
+            .parse()
+            .context("Failed to parse version")
+    }
 
+    /// Runs the Rust compiler bundled in the binary with the same arguments
+    /// as what was provided when the program was invoked.
+    pub(crate) fn fallback_to_rustc(args: Vec<String>) -> AnyResult<()> {
         StandardCompiler::from_args(args)
             .and_then(StandardCompiler::run)
             .context("Failed to run the fallback compiler")
     }
 }
 
-pub(crate) fn invoke_cargo(glue_crate: GlueCrate) -> AnyResult<()> {
+pub(crate) fn invoke_cargo(glue_crate: GlueCrate, initial_version: &Version) -> AnyResult<()> {
     let executable_path =
         env::current_exe().context("Failed to get `cargo-breaking` executable path")?;
 
     let status = Command::new("cargo")
         .env(RUN_WITH_CARGO_ENV_VARIABLE, "1")
+        .env(INITIAL_VERSION_ENV_VARIABLE, initial_version.to_string())
         .env("RUSTC_WRAPPER", executable_path)
         .env("RUSTFLAGS", "-A warnings")
         .arg("+nightly")
@@ -128,9 +161,7 @@ pub(crate) fn invoke_cargo(glue_crate: GlueCrate) -> AnyResult<()> {
         .status()
         .context("Unable to run cargo")?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        bail!("cargo exited with non-zero exit status");
-    }
+    ensure!(status.success(), "cargo exited with an error code");
+
+    Ok(())
 }

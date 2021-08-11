@@ -24,8 +24,8 @@ use manifest::Manifest;
 use crate::cli::glue_gen::GlueCrateGenerator;
 
 pub fn run() -> AnyResult<()> {
-    // check who called us
-    match InvocationContext::from_env() {
+    // Check who called us
+    match InvocationContext::from_env()? {
         // The user has invoked the application from the cli, we're going to set
         // everything up,and let cargo call us back (which will fall into an
         // other match branch)
@@ -38,19 +38,25 @@ pub fn run() -> AnyResult<()> {
                     .generate()
                     .context("Failed to generate glue crate")?;
 
-            crate::cli::invoke_cargo(glue_crate).context("cargo invocation failed")
+            crate::cli::invoke_cargo(glue_crate, manifest.version())
+                .context("cargo invocation failed")
         }
 
         // Cargo has asked us to compile a dependency, there's no need to setup
         // static analysis (yet ^_^)
-        InvocationContext::FromCargo { args } if InvocationContext::build_a_dependency(&args) => {
-            InvocationContext::fallback_to_rustc()
+        InvocationContext::FromCargo { args, .. }
+            if InvocationContext::should_build_a_dependency(&args) =>
+        {
+            InvocationContext::fallback_to_rustc(args).context("Failed to fallback to Rustc")
         }
 
         // Cargo has asked us to run on our glue crate, time to set up static
         // analysis!
-        InvocationContext::FromCargo { args } => {
-            BuildEnvironment::from_args(args)?.run_static_analysis()
-        }
+        InvocationContext::FromCargo {
+            args,
+            initial_version,
+        } => BuildEnvironment::new(args, initial_version)
+            .run_static_analysis()
+            .context("Failed to run static analysis"),
     }
 }
