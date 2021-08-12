@@ -13,7 +13,7 @@ use crate::cli::git::CrateRepo;
 
 use super::git::GitBackend;
 
-const GLUE_CODE: &str = "extern crate previous;\nextern crate current;";
+const GLUE_CODE: &str = "extern crate previous;\nextern crate next;";
 const COMMON_MANIFEST_CODE: &str = r#"[package]
 name = "glue"
 version = "0.0.1"
@@ -38,8 +38,7 @@ impl GlueCrateGenerator {
     pub(crate) fn generate(self) -> AnyResult<GlueCrate> {
         let temp_dir = Self::create_temp_dir().context("Failed to create temporary directory")?;
 
-        Self::generate_current_version(temp_dir.path())
-            .context("Failed to generate current crate")?;
+        Self::generate_next_version(temp_dir.path()).context("Failed to generate next crate")?;
 
         self.generate_previous_version(temp_dir.path())
             .context("Failed to generate previous crate")?;
@@ -54,13 +53,13 @@ impl GlueCrateGenerator {
         tempfile::tempdir().map_err(AnyError::new)
     }
 
-    fn generate_current_version(glue_path: &Path) -> AnyResult<()> {
-        Self::copy_current_version(glue_path)?;
-        Self::change_current_version(glue_path)
+    fn generate_next_version(glue_path: &Path) -> AnyResult<()> {
+        Self::copy_next_version(glue_path)?;
+        Self::change_next_version(glue_path)
     }
 
-    fn copy_current_version(glue_path: &Path) -> AnyResult<()> {
-        let dest = glue_path.to_path_buf().tap_mut(|p| p.push("current"));
+    fn copy_next_version(glue_path: &Path) -> AnyResult<()> {
+        let dest = glue_path.to_path_buf().tap_mut(|p| p.push("next"));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
         dir::copy(Path::new("."), dest, &CopyOptions::new())
@@ -68,7 +67,7 @@ impl GlueCrateGenerator {
             .context("Failed to copy crate content")
     }
 
-    fn change_current_version(glue_path: &Path) -> AnyResult<()> {
+    fn change_next_version(glue_path: &Path) -> AnyResult<()> {
         // Cargo currently does not handle cases where two package with the same
         // name and the same version are included in a Cargo.toml, even if they
         // are both renamed. As such, we must ensure that the version of each
@@ -78,11 +77,11 @@ impl GlueCrateGenerator {
 
         let manifest_path = glue_path
             .to_path_buf()
-            .tap_mut(|p| p.push("current"))
+            .tap_mut(|p| p.push("next"))
             .tap_mut(|p| p.push("Cargo.toml"));
 
-        append_to_package_version(&manifest_path, "-current")
-            .context("Failed to change package version for `current`")
+        append_to_package_version(&manifest_path, "-next")
+            .context("Failed to change package version for `next`")
     }
 
     fn generate_previous_version(&self, glue_path: &Path) -> AnyResult<()> {
@@ -104,7 +103,7 @@ impl GlueCrateGenerator {
     }
 
     fn change_previous_version(&self, glue_path: &Path) -> AnyResult<()> {
-        // See comment on `GlueCrateGenerator::change_current_version`, which
+        // See comment on `GlueCrateGenerator::change_next_version`, which
         // explains why we need to change the crate versions.
 
         let manifest_path = glue_path
@@ -147,7 +146,7 @@ impl GlueCrateGenerator {
         ));
 
         tmp.push_str(&format!(
-            "current = {{ path = \"current\", package = \"{}\" }}\n",
+            "next = {{ path = \"next\", package = \"{}\" }}\n",
             self.package_name,
         ));
 
