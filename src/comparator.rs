@@ -76,7 +76,7 @@ impl Diff {
             (None, Some(c)) => Self::Addition(c),
             (Some(c), None) => Self::Deletion(c),
             (Some(p), Some(n)) => Self::Edition(p, n),
-            _ => panic!("NONE AND NONE WTF"),
+            _ => panic!("Diff::from_path_and_changes called with no previous and next item"),
         }
     }
 
