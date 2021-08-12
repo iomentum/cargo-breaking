@@ -179,7 +179,7 @@ impl Change {
                 Some(Change::Breaking(d))
             }
 
-            Diff::Edition(prev, next) => ApiItem::generate_changes(prev, next),
+            Diff::Edition(prev, next) => ApiItem::changes_between(prev, next),
 
             // Removing anything that is publicly exposed is always breaking.
             Diff::Deletion(_) => Some(Change::Breaking(d)),

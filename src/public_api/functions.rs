@@ -28,7 +28,7 @@ impl FnMetadata {
         self.path.as_str()
     }
 
-    pub(crate) fn generate_changes(prev: FnMetadata, next: FnMetadata) -> Option<Change> {
+    pub(crate) fn changes_between(prev: FnMetadata, next: FnMetadata) -> Option<Change> {
         if prev.arg_num != next.arg_num {
             // Adding or removing an argument is *always* a breaking change.
             Some(Change::Breaking(Diff::Edition(

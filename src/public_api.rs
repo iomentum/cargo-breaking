@@ -98,10 +98,10 @@ impl ApiItem {
         }
     }
 
-    pub(crate) fn generate_changes(prev: ApiItem, next: ApiItem) -> Option<Change> {
+    pub(crate) fn changes_between(prev: ApiItem, next: ApiItem) -> Option<Change> {
         match (prev, next) {
-            (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::generate_changes(prev, next),
-            (ApiItem::Mod(prev), ApiItem::Mod(next)) => ModMetadata::generate_changes(prev, next),
+            (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::changes_between(prev, next),
+            (ApiItem::Mod(prev), ApiItem::Mod(next)) => ModMetadata::changes_between(prev, next),
 
             _ => unreachable!("Attempt to generate changes for two different-kinded types"),
         }
