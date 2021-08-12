@@ -14,12 +14,7 @@ use rustc_span::FileName;
 pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
-use crate::{
-    glue::{ChangeSet, InstrumentedCompiler},
-    ApiCompatibilityDiagnostics,
-};
-
-const GLUE_CODE: &str = "extern crate previous; extern crate current;";
+use crate::glue::{ChangeSet, InstrumentedCompiler};
 
 #[macro_export]
 macro_rules! compatibility_diagnosis {
@@ -34,7 +29,10 @@ macro_rules! compatibility_diagnosis {
     }};
 }
 
-pub fn get_diff_from_sources(previous: &'static str, next: &'static str) -> AnyResult<ChangeSet> {
+pub(crate) fn get_diff_from_sources(
+    previous: &'static str,
+    next: &'static str,
+) -> AnyResult<ChangeSet> {
     let root_container = create_temp_dir().context("Failed to create temporary code directory")?;
 
     let previous_crate =
