@@ -83,7 +83,7 @@ impl Diff {
             Diff::Edition(prev, next) => {
                 let p = prev.path();
 
-                // The pathes for both the previous and next items should be
+                // The paths for both the previous and next items should be
                 // the same. Let's enforce this invariant on debug builds.
                 debug_assert_eq!(p, next.path());
 
