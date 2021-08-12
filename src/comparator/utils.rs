@@ -11,35 +11,35 @@ use rustc_interface::Config;
 use rustc_session::config::Input;
 use rustc_span::FileName;
 
-use crate::{glue::MockedCompiler, ApiCompatibilityDiagnostics};
+pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
+pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
-const GLUE_CODE: &str = "extern crate previous; extern crate current;";
+use crate::glue::{ChangeSet, InstrumentedCompiler};
 
 #[macro_export]
 macro_rules! compatibility_diagnosis {
     (
         { $( $previous_tt:tt )* },
-        { $( $current_tt:tt )* } $(,)?
+        { $( $next_tt:tt )* } $(,)?
     ) => {{
         let previous_code = stringify!( $( $previous_tt )* );
-        let current_code = stringify!( $( $current_tt )* );
+        let next_code = stringify!( $( $next_tt )* );
 
-        $crate::get_diff_from_sources(previous_code, current_code).unwrap()
+        $crate::get_diff_from_sources(previous_code, next_code).unwrap()
     }};
 }
 
-pub fn get_diff_from_sources(
+pub(crate) fn get_diff_from_sources(
     previous: &'static str,
-    current: &'static str,
-) -> AnyResult<ApiCompatibilityDiagnostics> {
+    next: &'static str,
+) -> AnyResult<ChangeSet> {
     let root_container = create_temp_dir().context("Failed to create temporary code directory")?;
 
     let previous_crate =
         CompilationUnit::previous(root_container.path()).with_code(previous.to_owned());
-    let current_crate =
-        CompilationUnit::current(root_container.path()).with_code(current.to_owned());
+    let next_crate = CompilationUnit::next(root_container.path()).with_code(next.to_owned());
 
-    CompilationUnit::glue(root_container.path(), previous_crate, current_crate)
+    CompilationUnit::glue(root_container.path(), previous_crate, next_crate)
         .diff()
         .context("Failed to build project")
 }
@@ -64,11 +64,11 @@ struct CompilationUnit<'a> {
 
 impl<'a> CompilationUnit<'a> {
     fn previous(root_path: &'a Path) -> CompilationUnit<'a> {
-        CompilationUnit::dependency(root_path, "previous".to_owned())
+        CompilationUnit::dependency(root_path, PREVIOUS_CRATE_NAME.to_string())
     }
 
-    fn current(root_path: &'a Path) -> CompilationUnit<'a> {
-        CompilationUnit::dependency(root_path, "current".to_owned())
+    fn next(root_path: &'a Path) -> CompilationUnit<'a> {
+        CompilationUnit::dependency(root_path, NEXT_CRATE_NAME.to_string())
     }
 
     fn glue(
@@ -77,7 +77,10 @@ impl<'a> CompilationUnit<'a> {
         current_crate: CompilationUnit<'a>,
     ) -> CompilationUnit<'a> {
         CompilationUnit {
-            code: "extern crate previous; extern crate current;".to_owned(),
+            code: format!(
+                "extern crate {}; extern crate {};",
+                PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
+            ),
             crate_name: "glue".to_owned(),
             dependencies: vec![previous_crate, current_crate],
             is_final: true,
@@ -129,7 +132,7 @@ impl<'a> CompilationUnit<'a> {
             .map_err(|_| anyhow!("Failed to compile crate"))
     }
 
-    fn diff(self) -> AnyResult<ApiCompatibilityDiagnostics> {
+    fn diff(self) -> AnyResult<ChangeSet> {
         ensure!(self.is_final, "Cannot get the diff of a non-glue crate");
 
         let dependencies_artifacts = self
@@ -147,7 +150,13 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        let mut compiler = MockedCompiler::new("glue".to_owned(), GLUE_CODE.to_owned());
+        let mut compiler = InstrumentedCompiler::new(
+            "glue".to_owned(),
+            format!(
+                "extern crate {}; extern crate {};",
+                PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
+            ),
+        );
 
         RunCompiler::new(args.as_slice(), &mut compiler)
             .run()

@@ -18,7 +18,9 @@ mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
 use cli::{BuildEnvironment, InvocationContext};
+use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
+use glue::ChangeSet;
 use manifest::Manifest;
 
 use crate::cli::glue_gen::GlueCrateGenerator;
@@ -59,4 +61,8 @@ pub fn run() -> AnyResult<()> {
             .run_static_analysis()
             .context("Failed to run static analysis"),
     }
+}
+
+pub fn get_diff_from_sources(previous: &'static str, next: &'static str) -> AnyResult<ChangeSet> {
+    utils::get_diff_from_sources(previous, next)
 }

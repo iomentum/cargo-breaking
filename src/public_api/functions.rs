@@ -2,29 +2,41 @@ use rustc_span::def_id::DefId;
 
 use rustc_middle::ty::TyCtxt;
 
-use crate::diagnosis::{DiagnosisCollector, DiagnosticGenerator};
+use crate::{comparator::Diff, glue::Change};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct FnMetadata(pub(crate) DefId);
+use super::ApiItem;
 
-impl FnMetadata {
-    pub(crate) fn new(id: DefId) -> FnMetadata {
-        FnMetadata(id)
-    }
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FnMetadata {
+    arg_num: usize,
+    path: String,
 }
 
-impl DiagnosticGenerator for FnMetadata {
-    fn def_id(&self) -> DefId {
-        self.0
+impl FnMetadata {
+    pub(crate) fn new(tcx: &TyCtxt, id: DefId) -> FnMetadata {
+        let arg_num = tcx.fn_sig(id).skip_binder().inputs_and_output.len();
+        let path = tcx.def_path(id).to_string_no_crate_verbose();
+
+        FnMetadata { arg_num, path }
     }
 
-    fn modification_diagnosis(
-        &self,
-        _other: &FnMetadata,
-        _tcx: &TyCtxt,
-        _collector: &mut DiagnosisCollector,
-    ) {
-        // TODO: handle any generic type parameter change as a breaking change
-        // TODO: handle any input and output type change as a breaking change
+    pub(crate) fn path(&self) -> &str {
+        self.path.as_str()
+    }
+
+    pub(crate) fn changes_between(prev: FnMetadata, next: FnMetadata) -> Option<Change> {
+        if prev.arg_num != next.arg_num {
+            // Adding or removing an argument is *always* a breaking change.
+            Some(Change::Breaking(Diff::Edition(
+                prev.to_api_item(),
+                next.to_api_item(),
+            )))
+        } else {
+            None
+        }
+    }
+
+    fn to_api_item(self) -> ApiItem {
+        ApiItem::from(self)
     }
 }

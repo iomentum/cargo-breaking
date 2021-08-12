@@ -6,7 +6,7 @@ use crate::comparator::utils;
 
 use std::{env, process::Command};
 
-use anyhow::{bail, ensure, Context, Result as AnyResult};
+use anyhow::{ensure, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
@@ -53,8 +53,10 @@ impl BuildEnvironment {
             println!("{}", diff);
         }
 
+        /*
         let next_version = diff.guess_next_version(self.initial_version);
         println!("Next version is: {}", next_version);
+        */
 
         Ok(())
     }
