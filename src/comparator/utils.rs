@@ -15,7 +15,7 @@ pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    glue::{ChangeSet, MockedCompiler},
+    glue::{ChangeSet, InstrumentedCompiler},
     ApiCompatibilityDiagnostics,
 };
 
@@ -152,7 +152,7 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        let mut compiler = MockedCompiler::new(
+        let mut compiler = InstrumentedCompiler::new(
             "glue".to_owned(),
             format!(
                 "extern crate {}; extern crate {};",

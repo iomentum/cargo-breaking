@@ -30,27 +30,29 @@ impl Callbacks for Compiler {
     }
 }
 
-pub(crate) enum MockedCompiler {
+pub(crate) enum InstrumentedCompiler {
     Running { file_name: String, code: String },
     Finished(AnyResult<ChangeSet>),
 }
 
-impl MockedCompiler {
-    pub(crate) fn new(file_name: String, code: String) -> MockedCompiler {
-        MockedCompiler::Running { file_name, code }
+impl InstrumentedCompiler {
+    pub(crate) fn new(file_name: String, code: String) -> InstrumentedCompiler {
+        InstrumentedCompiler::Running { file_name, code }
     }
 
     pub(crate) fn finalize(self) -> AnyResult<ChangeSet> {
         match self {
-            MockedCompiler::Finished(rslt) => rslt,
+            InstrumentedCompiler::Finished(rslt) => rslt,
             _ => panic!("`finalize` is called on a non-completed compiler"),
         }
     }
 
     fn file_name_and_code(&self) -> (&str, &str) {
         match self {
-            MockedCompiler::Running { file_name, code } => (file_name.as_str(), code.as_str()),
-            MockedCompiler::Finished(_) => {
+            InstrumentedCompiler::Running { file_name, code } => {
+                (file_name.as_str(), code.as_str())
+            }
+            InstrumentedCompiler::Finished(_) => {
                 panic!("`file_name_and_code` called on a non-running compiler")
             }
         }
@@ -59,7 +61,7 @@ impl MockedCompiler {
 
 /// The compiler is providing us with a couple of [callbacks](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_driver/trait.Callbacks.html),
 /// that allow us to hook into its lifecycle
-impl Callbacks for MockedCompiler {
+impl Callbacks for InstrumentedCompiler {
     /// We are going to ask the compiler to build our previous and next crates,
     /// instead of the regular lib.rs or main.rs.
     fn config(&mut self, config: &mut Config) {
@@ -85,7 +87,7 @@ impl Callbacks for MockedCompiler {
             get_changeset(comparator)
         });
 
-        *self = MockedCompiler::Finished(changeset);
+        *self = InstrumentedCompiler::Finished(changeset);
 
         // we don't need the compiler to actually generate any code.
         Compilation::Stop
