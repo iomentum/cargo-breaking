@@ -7,7 +7,7 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
 use rustc_span::def_id::DefId;
 
-use crate::{diagnosis::DiagnosticGenerator, glue::Change};
+use crate::glue::Change;
 
 pub(crate) use self::{functions::FnMetadata, modules::ModMetadata};
 

@@ -1,10 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
-use crate::{
-    diagnosis::{DiagnosisCollector, DiagnosticGenerator},
-    glue::Change,
-};
+use crate::glue::Change;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ModMetadata {

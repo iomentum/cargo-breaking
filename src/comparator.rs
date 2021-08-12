@@ -3,7 +3,6 @@ pub(crate) mod utils;
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use std::{
-    cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
     hash::Hash,
@@ -19,10 +18,7 @@ use rustc_middle::middle::cstore::ExternCrateSource;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::CrateNum;
 
-use crate::{
-    diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator},
-    public_api::PublicApi,
-};
+use crate::{diagnosis::DiagnosisItem, public_api::PublicApi};
 
 pub struct ApiComparator<'tcx> {
     previous: PublicApi,

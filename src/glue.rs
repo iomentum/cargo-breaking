@@ -1,34 +1,19 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Display, Formatter},
-    process::Command,
 };
 
-use anyhow::{anyhow, Context, Result as AnyResult};
+use anyhow::Result as AnyResult;
 
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::Config;
-use rustc_middle::{middle::cstore::ExternCrateSource, ty::TyCtxt};
 use rustc_session::config::Input;
-use rustc_span::{def_id::CrateNum, FileName};
+use rustc_span::FileName;
 
 use crate::{
     comparator::{ApiComparator, Comparator, Diff},
-    public_api::{ApiItem, PublicApi},
-    ApiCompatibilityDiagnostics,
+    public_api::ApiItem,
 };
-
-struct Compiler;
-
-impl Callbacks for Compiler {
-    fn after_analysis<'tcx>(
-        &mut self,
-        _compiler: &rustc_interface::interface::Compiler,
-        _queries: &'tcx rustc_interface::Queries,
-    ) -> Compilation {
-        Compilation::Stop
-    }
-}
 
 pub(crate) enum InstrumentedCompiler {
     Running { file_name: String, code: String },
