@@ -6,7 +6,8 @@ use anyhow::Result as AnyResult;
 
 pub(crate) use instrumented_compiler::InstrumentedCompiler;
 pub(crate) use standard_compiler::StandardCompiler;
-pub(crate) use sysroot_guesser::SysrootGuesser;
+
+use sysroot_guesser::SysrootGuesser;
 
 /// Represents the behaviour of a compiler.
 ///
