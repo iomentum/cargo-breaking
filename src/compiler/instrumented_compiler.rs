@@ -15,11 +15,7 @@ use super::Compiler;
 /// extract the API the previous and next version of the crate we're analyzing.
 pub(crate) enum InstrumentedCompiler {
     /// Represents the compiler after its creation. No process has been done.
-    Ready {
-        args: Vec<String>,
-        file_name: String,
-        code: String,
-    },
+    Ready { file_name: String, code: String },
 
     /// Represents the compiler before the static analysis step.
     Running { file_name: String, code: String },
@@ -141,9 +137,11 @@ impl Callbacks for InstrumentedCompiler {
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
+        let settings = self.settings().clone();
+
         // get prev & next
         let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
-            let comparator = ApiComparator::from_tcx(tcx)?;
+            let comparator = ApiComparator::from_tcx_and_settings(tcx, settings)?;
             crate::glue::get_changeset(comparator)
         });
 

@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::{anyhow, ensure, Context, Result as AnyResult};
+use semver::Version;
 use tempfile::TempDir;
 
 use rustc_driver::{Callbacks, RunCompiler};
@@ -15,8 +16,8 @@ pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    compiler::{Compiler, InstrumentedCompiler},
-    glue::ChangeSet,
+    glue::{ChangeSet, InstrumentedCompiler},
+    invocation_settings::CompilerInvocationSettings,
 };
 
 #[macro_export]
@@ -153,15 +154,20 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        InstrumentedCompiler::faked(
+        let mut compiler = InstrumentedCompiler::new(
             "glue".to_owned(),
             format!(
                 "extern crate {}; extern crate {};",
                 PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
             ),
-            args,
-        )?
-        .run()
+            test_compiler_settings(),
+        );
+
+        RunCompiler::new(args.as_slice(), &mut compiler)
+            .run()
+            .map_err(|_| anyhow!("Failed to compile crate"))?;
+
+        compiler.finalize().context("Failed to collect diagnosis")
     }
 
     fn cli_args<'b>(&self, deps: impl Iterator<Item = (&'b str, &'b Path)>) -> Vec<String> {
@@ -206,6 +212,16 @@ impl<'a> CompilationUnit<'a> {
         path.push(format!("lib{}.rmeta", self.crate_name));
 
         path
+    }
+}
+
+fn test_compiler_settings() -> CompilerInvocationSettings {
+    CompilerInvocationSettings {
+        glue_crate_name: "glue".to_string(),
+        previous_crate_name: PREVIOUS_CRATE_NAME.to_string(),
+        next_crate_name: NEXT_CRATE_NAME.to_string(),
+        crate_version: Version::new(0, 0, 0),
+        package_name: "test".to_string(),
     }
 }
 

@@ -6,9 +6,100 @@ use std::{
 use anyhow::Result as AnyResult;
 
 use crate::{
-    comparator::{Comparator, Diff},
+    comparator::{ApiComparator, Comparator, Diff},
+    invocation_settings::CompilerInvocationSettings,
     public_api::ApiItem,
 };
+
+use rustc_driver::{Callbacks, Compilation};
+use rustc_interface::Config;
+use rustc_session::config::Input;
+use rustc_span::FileName;
+
+pub(crate) enum InstrumentedCompiler {
+    Running {
+        file_name: String,
+        code: String,
+        settings: CompilerInvocationSettings,
+    },
+    Finished(AnyResult<ChangeSet>),
+}
+
+impl InstrumentedCompiler {
+    pub(crate) fn new(
+        file_name: String,
+        code: String,
+        settings: CompilerInvocationSettings,
+    ) -> InstrumentedCompiler {
+        InstrumentedCompiler::Running {
+            file_name,
+            code,
+            settings,
+        }
+    }
+
+    pub(crate) fn finalize(self) -> AnyResult<ChangeSet> {
+        match self {
+            InstrumentedCompiler::Finished(rslt) => rslt,
+            _ => panic!("`finalize` is called on a non-completed compiler"),
+        }
+    }
+
+    fn file_name_and_code(&self) -> (&str, &str) {
+        match self {
+            InstrumentedCompiler::Running {
+                file_name, code, ..
+            } => (file_name.as_str(), code.as_str()),
+            InstrumentedCompiler::Finished(_) => {
+                panic!("`file_name_and_code` called on a non-running compiler")
+            }
+        }
+    }
+
+    fn settings(&self) -> &CompilerInvocationSettings {
+        match self {
+            InstrumentedCompiler::Running { settings, .. } => settings,
+            _ => panic!("`settings` called on a non-finished compiler"),
+        }
+    }
+}
+
+/// The compiler is providing us with a couple of [callbacks](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_driver/trait.Callbacks.html),
+/// that allow us to hook into its lifecycle
+impl Callbacks for InstrumentedCompiler {
+    /// We are going to ask the compiler to build our previous and next crates,
+    /// instead of the regular lib.rs or main.rs.
+    fn config(&mut self, config: &mut Config) {
+        let (file_name, code) = self.file_name_and_code();
+
+        config.input = Input::Str {
+            name: FileName::Custom(file_name.to_owned()),
+            input: code.to_owned(),
+        }
+    }
+
+    /// This is where everything is happening.
+    /// We will focus on [after_analysis](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_driver/trait.Callbacks.html#method.after_analysis),
+    /// where we will hook our breaking API checks.
+    fn after_analysis<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> Compilation {
+        let settings = self.settings().clone();
+
+        // get prev & next
+        let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
+            let comparator = ApiComparator::from_tcx_and_settings(tcx, settings)?;
+            get_changeset(comparator)
+        });
+
+        *self = InstrumentedCompiler::Finished(changeset);
+
+        // we don't need the compiler to actually generate any code.
+        Compilation::Stop
+    }
+}
 
 pub struct ChangeSet {
     changes: Vec<Change>,
