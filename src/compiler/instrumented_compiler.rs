@@ -1,3 +1,5 @@
+use std::mem;
+
 use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_interface::Config;
 use rustc_session::config::Input;
@@ -12,12 +14,15 @@ use super::Compiler;
 /// A compiler that is capable of running the static analysis required to
 /// extract the API the previous and next version of the crate we're analyzing.
 pub(crate) enum InstrumentedCompiler {
-    /// Represents the compiler before the static analysis step.
-    Running {
+    /// Represents the compiler after its creation. No process has been done.
+    Ready {
+        args: Vec<String>,
         file_name: String,
         code: String,
-        args: Vec<String>,
     },
+
+    /// Represents the compiler before the static analysis step.
+    Running { file_name: String, code: String },
 
     /// Represents the compiler after the static analysis step.
     Finished(AnyResult<ChangeSet>),
@@ -32,10 +37,10 @@ impl InstrumentedCompiler {
 
         args.push(format!("--sysroot={}", sysroot_path));
 
-        Ok(InstrumentedCompiler::Running {
+        Ok(InstrumentedCompiler::Ready {
+            args,
             file_name: "src/lib.rs".to_string(),
             code: "extern crate previous; extern crate next;".to_string(),
-            args,
         })
     }
 
@@ -48,11 +53,33 @@ impl InstrumentedCompiler {
 
         args.push(format!("--sysroot={}", sysroot_path));
 
-        Ok(InstrumentedCompiler::Running {
+        Ok(InstrumentedCompiler::Ready {
             file_name,
             code,
             args,
         })
+    }
+
+    fn start(&mut self) -> Vec<String> {
+        match self {
+            InstrumentedCompiler::Ready {
+                args,
+                file_name,
+                code,
+            } => {
+                // We're moving data out of &mut self, but this is fine since
+                // we will reassign to self next.
+
+                let args = mem::take(args);
+                let file_name = mem::take(file_name);
+                let code = mem::take(code);
+
+                *self = InstrumentedCompiler::Running { file_name, code };
+                args
+            }
+
+            _ => panic!("`start` called on a non-ready compiler"),
+        }
     }
 
     fn finalize(self) -> AnyResult<ChangeSet> {
@@ -62,20 +89,14 @@ impl InstrumentedCompiler {
         }
     }
 
-    fn args(&self) -> &[String] {
-        match self {
-            InstrumentedCompiler::Running { args, .. } => args.as_slice(),
-            _ => panic!("`args` is called on a finished compiler"),
-        }
-    }
-
     fn file_name_and_code(&self) -> (&str, &str) {
         match self {
             InstrumentedCompiler::Running {
                 file_name, code, ..
             } => (file_name.as_str(), code.as_str()),
-            InstrumentedCompiler::Finished(_) => {
-                panic!("`file_name_and_code` called on a finished compiler")
+
+            _ => {
+                panic!("`file_name_and_code` called on a non-running compiler")
             }
         }
     }
@@ -88,7 +109,7 @@ impl Compiler for InstrumentedCompiler {
         // This call to `to_vec` occurs for borrowing reasons. See the comment
         // in `StandardCompiler::run` for more.
 
-        let args = self.args().to_vec();
+        let args = self.start();
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()
