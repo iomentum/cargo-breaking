@@ -177,14 +177,7 @@ impl GlueCrateGenerator {
         settings: CompilerInvocationSettings,
         glue_path: &Path,
     ) -> AnyResult<()> {
-        let settings_path = glue_path
-            .to_path_buf()
-            .tap_mut(|p| p.push("cargo-breaking-settings.toml"));
-
-        let file_content =
-            toml::to_string(&settings).context("Failed to serialize settings file")?;
-
-        fs::write(settings_path, file_content).context("Failed to write invocation settings")
+        settings.write_to(glue_path)
     }
 }
 

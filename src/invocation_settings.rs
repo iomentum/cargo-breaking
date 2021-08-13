@@ -3,6 +3,7 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result as AnyResult};
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use tap::Tap;
 
 /// The invocation settings.
 ///
@@ -31,5 +32,15 @@ impl CompilerInvocationSettings {
             fs::read_to_string(file_path).context("Failed to read invocation settings ffile")?;
 
         toml::from_str(file_content.as_str()).context("Failed to deserialize settings file")
+    }
+
+    pub(crate) fn write_to(&self, path: &Path) -> AnyResult<()> {
+        let file_path = path
+            .to_path_buf()
+            .tap_mut(|p| p.push("cargo-breaking-settings.toml"));
+
+        let file_content = toml::to_string(self).context("Failed to serialize settings")?;
+
+        fs::write(file_path, file_content).context("Failed to write settings file")
     }
 }
