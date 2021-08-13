@@ -1,8 +1,8 @@
-use std::process::Command;
-
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, RunCompiler};
+
+use super::Compiler;
 
 /// A non-instrumented compiler that tries to mimic the original rustc as much
 /// as possible.
@@ -14,7 +14,8 @@ use rustc_driver::{Callbacks, RunCompiler};
 /// compiler we use to get the diagnosis.
 ///
 /// That does not mean that we don't need the nightly compiler: we still need
-/// in order to get the sysroot path.
+/// in order to get the sysroot path. See the comment in
+/// StandardCompiler::from_args
 pub(crate) struct StandardCompiler {
     args: Vec<String>,
 }
@@ -25,15 +26,18 @@ impl StandardCompiler {
         // list as described here:
         // https://github.com/rust-lang/rustc-dev-guide/blob/d111b3ea7ea22877d08db81fbc0c4a5b3024fec1/examples/rustc-driver-interacting-with-the-ast.rs#L26
 
-        let sysroot_path_arg =
-            StandardCompiler::sysroot_path_arg().context("Failed to get sysroot path argument")?;
+        let sysroot_path = Self::sysroot_path().context("Failed to get the sysroot path")?;
 
-        args.push(sysroot_path_arg);
+        args.push(format!("--sysroot={}", sysroot_path));
 
         Ok(StandardCompiler { args })
     }
+}
 
-    pub(crate) fn run(mut self) -> AnyResult<()> {
+impl Compiler for StandardCompiler {
+    type Output = ();
+
+    fn run(mut self) -> AnyResult<()> {
         // It is necessary to clone the arguments because we need to pass an
         // &mut self to the compiler but also need to pass a reference to the
         // argument passed via CLI. This leads to both a mutable reference and
@@ -45,23 +49,6 @@ impl StandardCompiler {
         RunCompiler::new(args.as_slice(), &mut self)
             .run()
             .map_err(|_| anyhow!("Failed to compile the crate"))
-    }
-
-    fn sysroot_path_arg() -> AnyResult<String> {
-        // As we can't magically guess the sysroot path, we can ask it to
-        // rustc.
-
-        let out = Command::new("rustc")
-            .arg("+nightly")
-            .arg("--print=sysroot")
-            .current_dir(".")
-            .output()
-            .context("Failed to get regular sysroot from rustc")?;
-
-        let sysroot_path =
-            String::from_utf8(out.stdout).context("Failed to convert rustc output to utf-8")?;
-
-        Ok(format!("--sysroot={}", sysroot_path.trim()))
     }
 }
 

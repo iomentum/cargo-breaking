@@ -11,6 +11,7 @@ extern crate rustc_span;
 
 mod cli;
 mod comparator;
+mod compiler;
 mod diagnosis;
 mod glue;
 mod manifest;

@@ -14,7 +14,10 @@ use rustc_span::FileName;
 pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
-use crate::glue::{ChangeSet, InstrumentedCompiler};
+use crate::{
+    compiler::{Compiler, InstrumentedCompiler},
+    glue::ChangeSet,
+};
 
 #[macro_export]
 macro_rules! compatibility_diagnosis {
@@ -150,19 +153,15 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        let mut compiler = InstrumentedCompiler::new(
+        InstrumentedCompiler::faked(
             "glue".to_owned(),
             format!(
                 "extern crate {}; extern crate {};",
                 PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
             ),
-        );
-
-        RunCompiler::new(args.as_slice(), &mut compiler)
-            .run()
-            .map_err(|_| anyhow!("Failed to compile crate"))?;
-
-        compiler.finalize().context("Failed to collect diagnosis")
+            args,
+        )?
+        .run()
     }
 
     fn cli_args<'b>(&self, deps: impl Iterator<Item = (&'b str, &'b Path)>) -> Vec<String> {
