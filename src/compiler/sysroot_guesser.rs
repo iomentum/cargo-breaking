@@ -25,7 +25,7 @@ impl Compiler for SysrootGuesser {
             .arg("--print=sysroot")
             .current_dir(".")
             .output()
-            .context("Failed to get regular sysroot from rustc")?;
+            .context("Failed to get sysroot from rustc")?;
 
         let output =
             String::from_utf8(out.stdout).context("Failed to convert rustc output to utf-8")?;
