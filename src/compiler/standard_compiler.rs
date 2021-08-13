@@ -1,3 +1,5 @@
+use std::mem;
+
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, RunCompiler};
@@ -37,14 +39,12 @@ impl StandardCompiler {
 impl Compiler for StandardCompiler {
     type Output = ();
 
-    fn run(mut self) -> AnyResult<()> {
-        // It is necessary to clone the arguments because we need to pass an
-        // &mut self to the compiler but also need to pass a reference to the
-        // argument passed via CLI. This leads to both a mutable reference and
-        // immutable reference being created at the same time, which is
-        // forbidden by the borrow checker.
+    fn prepare(&mut self) -> Vec<String> {
+        mem::take(&mut self.args)
+    }
 
-        let args = self.args.clone();
+    fn run(mut self) -> AnyResult<()> {
+        let args = self.prepare();
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()

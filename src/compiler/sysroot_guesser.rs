@@ -16,13 +16,18 @@ impl SysrootGuesser {
 impl Compiler for SysrootGuesser {
     type Output = String;
 
-    fn run(self) -> AnyResult<String> {
+    fn prepare(&mut self) -> Vec<String> {
+        vec!["+nightly".to_string(), "--print=sysroot".to_string()]
+    }
+
+    fn run(mut self) -> AnyResult<String> {
         // In order to get the sysroot, we have to fallback on the Rustc that
         // installed in the current device.
 
+        let args = self.prepare();
+
         let out = Command::new("rustc")
-            .arg("+nightly")
-            .arg("--print=sysroot")
+            .args(args)
             .current_dir(".")
             .output()
             .context("Failed to get sysroot from rustc")?;

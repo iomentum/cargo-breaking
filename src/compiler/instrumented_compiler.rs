@@ -60,28 +60,6 @@ impl InstrumentedCompiler {
         })
     }
 
-    fn start(&mut self) -> Vec<String> {
-        match self {
-            InstrumentedCompiler::Ready {
-                args,
-                file_name,
-                code,
-            } => {
-                // We're moving data out of &mut self, but this is fine since
-                // we will reassign to self next.
-
-                let args = mem::take(args);
-                let file_name = mem::take(file_name);
-                let code = mem::take(code);
-
-                *self = InstrumentedCompiler::Running { file_name, code };
-                args
-            }
-
-            _ => panic!("`start` called on a non-ready compiler"),
-        }
-    }
-
     fn finalize(self) -> AnyResult<ChangeSet> {
         match self {
             InstrumentedCompiler::Finished(rslt) => rslt,
@@ -105,11 +83,33 @@ impl InstrumentedCompiler {
 impl Compiler for InstrumentedCompiler {
     type Output = ChangeSet;
 
+    fn prepare(&mut self) -> Vec<String> {
+        match self {
+            InstrumentedCompiler::Ready {
+                args,
+                file_name,
+                code,
+            } => {
+                // We're moving data out of &mut self, but this is fine since
+                // we will reassign to self next.
+
+                let args = mem::take(args);
+                let file_name = mem::take(file_name);
+                let code = mem::take(code);
+
+                *self = InstrumentedCompiler::Running { file_name, code };
+                args
+            }
+
+            _ => panic!("`start` called on a non-ready compiler"),
+        }
+    }
+
     fn run(mut self) -> AnyResult<ChangeSet> {
         // This call to `to_vec` occurs for borrowing reasons. See the comment
         // in `StandardCompiler::run` for more.
 
-        let args = self.start();
+        let args = self.prepare();
 
         RunCompiler::new(args.as_slice(), &mut self)
             .run()

@@ -24,6 +24,8 @@ use sysroot_guesser::SysrootGuesser;
 pub(crate) trait Compiler {
     type Output;
 
+    fn prepare(&mut self) -> Vec<String>;
+
     fn run(self) -> AnyResult<Self::Output>;
 
     fn sysroot_path() -> AnyResult<String> {
