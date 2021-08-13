@@ -1,7 +1,11 @@
 mod git;
 pub mod glue_gen;
 
-use crate::compiler::{Compiler, InstrumentedCompiler, StandardCompiler};
+use crate::{
+    comparator::utils,
+    compiler::{Compiler, InstrumentedCompiler, StandardCompiler},
+    invocation_settings::CompilerInvocationSettings,
+};
 
 use std::{env, process::Command};
 
@@ -71,23 +75,31 @@ pub(crate) enum InvocationContext {
     /// The user invoked cargo-breaking by typing `cargo breaking`.
     FromCli { comparison_ref: String },
 
-    /// Cargo invoked cargo-breaking because it wants us to compile a crate.
-    ///
-    /// InvocationContext::should_build_a_depencency can be used to
-    /// disambiguate situation #2 and #3.
-    FromCargo {
+    /// Cargo invoked cargo-breaking because it wants us to compile a
+    /// dependency.
+    DepFromCargo { args: Vec<String> },
+
+    /// Cargo invoked cargo-breaking because it wants us to compile the glue
+    /// crate.
+    GlueFromCargo {
         args: Vec<String>,
-        initial_version: Version,
+        settings: CompilerInvocationSettings,
     },
 }
 
 impl InvocationContext {
     pub(crate) fn from_env() -> AnyResult<InvocationContext> {
         if Self::is_run_by_cargo() {
-            Ok(Self::FromCargo {
-                args: env::args().skip(1).collect(),
-                initial_version: Self::version_from_env()?,
-            })
+            let args = env::args().skip(1).collect::<Vec<_>>();
+
+            if Self::should_build_a_dependency(args.as_slice()) {
+                Ok(InvocationContext::DepFromCargo { args })
+            } else {
+                let settings = CompilerInvocationSettings::from_env()
+                    .context("Failed to load compiler invocation settings")?;
+
+                Ok(Self::GlueFromCargo { args, settings })
+            }
         } else {
             let args = App::new(crate_name!())
                 .version(crate_version!())
@@ -111,6 +123,11 @@ impl InvocationContext {
 
     fn is_run_by_cargo() -> bool {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
+    }
+
+    fn is_target_information_invocation() -> bool {
+        let arg_value = env::args().nth(4);
+        arg_value.as_ref().map(String::as_str) == Some("___")
     }
 
     pub(crate) fn should_build_a_dependency(args: &[String]) -> bool {

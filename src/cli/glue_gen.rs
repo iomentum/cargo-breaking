@@ -6,10 +6,11 @@ use std::{
 use anyhow::{bail, Context, Error as AnyError, Result as AnyResult};
 use cargo_toml::Manifest;
 use fs_extra::dir::{self, CopyOptions};
+use semver::Version;
 use tap::Tap;
 use tempfile::TempDir;
 
-use crate::cli::git::CrateRepo;
+use crate::{cli::git::CrateRepo, invocation_settings::CompilerInvocationSettings};
 
 use super::git::GitBackend;
 
@@ -45,6 +46,9 @@ impl GlueCrateGenerator {
 
         self.add_glue(temp_dir.path())
             .context("Failed to add glue code")?;
+
+        self.generate_settings_file(temp_dir.path())
+            .context("Failed to generate the settings file")?;
 
         Ok(GlueCrate { temp_dir })
     }
@@ -151,6 +155,36 @@ impl GlueCrateGenerator {
         ));
 
         tmp
+    }
+
+    fn generate_settings_file(&self, glue_path: &Path) -> AnyResult<()> {
+        let settings = self.invocation_settings();
+        Self::write_settings_file(settings, glue_path)
+    }
+
+    fn invocation_settings(&self) -> CompilerInvocationSettings {
+        CompilerInvocationSettings {
+            glue_crate_name: "glue".to_string(),
+            previous_crate_name: "previous".to_string(),
+            next_crate_name: "next".to_string(),
+            // TODO: use actual version instead.
+            crate_version: Version::new(0, 0, 1),
+            package_name: self.package_name.clone(),
+        }
+    }
+
+    fn write_settings_file(
+        settings: CompilerInvocationSettings,
+        glue_path: &Path,
+    ) -> AnyResult<()> {
+        let settings_path = glue_path
+            .to_path_buf()
+            .tap_mut(|p| p.push("cargo-breaking-settings.toml"));
+
+        let file_content =
+            toml::to_string(&settings).context("Failed to serialize settings file")?;
+
+        fs::write(settings_path, file_content).context("Failed to write invocation settings")
     }
 }
 

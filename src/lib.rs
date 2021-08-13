@@ -14,6 +14,7 @@ mod comparator;
 mod compiler;
 mod diagnosis;
 mod glue;
+pub(crate) mod invocation_settings;
 mod manifest;
 mod public_api;
 
@@ -47,20 +48,17 @@ pub fn run() -> AnyResult<()> {
 
         // Cargo has asked us to compile a dependency, there's no need to setup
         // static analysis (yet ^_^)
-        InvocationContext::FromCargo { args, .. }
-            if InvocationContext::should_build_a_dependency(&args) =>
-        {
+        InvocationContext::DepFromCargo { args } => {
             InvocationContext::fallback_to_rustc(args).context("Failed to fallback to Rustc")
         }
 
         // Cargo has asked us to run on our glue crate, time to set up static
         // analysis!
-        InvocationContext::FromCargo {
-            args,
-            initial_version,
-        } => BuildEnvironment::new(args, initial_version)
-            .run_static_analysis()
-            .context("Failed to run static analysis"),
+        InvocationContext::GlueFromCargo { args, settings } => {
+            BuildEnvironment::new(args, settings.crate_version)
+                .run_static_analysis()
+                .context("Failed to run static analysis")
+        }
     }
 }
 
