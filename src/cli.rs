@@ -39,10 +39,6 @@ impl BuildEnvironment {
     }
 
     pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
-        // TODO(scrabsha): use the API provided by the linked PR to produce a
-        // decent diff.
-        // https://github.com/iomentum/cargo-breaking/pull/28
-
         let diff = InstrumentedCompiler::from_args(self.args)?.run()?;
 
         if !diff.is_empty() {
