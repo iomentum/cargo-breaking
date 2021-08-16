@@ -19,7 +19,7 @@ use tap::Tap;
 /// via CLI is supposed to Serialize it in a file so that cargo-breaking
 /// compiler can read it.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) struct CompilerInvocationSettings {
+pub(crate) struct GlueCompilerInvocationSettings {
     pub(crate) glue_crate_name: String,
     pub(crate) previous_crate_name: String,
     pub(crate) next_crate_name: String,
@@ -27,7 +27,21 @@ pub(crate) struct CompilerInvocationSettings {
     pub(crate) package_name: String,
 }
 
-impl CompilerInvocationSettings {
+impl GlueCompilerInvocationSettings {
+    pub(crate) fn from_package_and_crate_names(
+        package_name: String,
+        previous_crate_name: String,
+        next_crate_name: String,
+    ) -> Self {
+        Self {
+            glue_crate_name: "glue".to_string(),
+            previous_crate_name,
+            next_crate_name,
+            // TODO: use actual version instead.
+            crate_version: Version::new(0, 0, 1),
+            package_name: package_name,
+        }
+    }
     pub(crate) fn from_env() -> AnyResult<Self> {
         let file_path = Path::new("cargo-breaking-settings.toml");
         let file_content =

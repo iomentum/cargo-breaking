@@ -17,7 +17,7 @@ pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
     glue::{ChangeSet, InstrumentedCompiler},
-    invocation_settings::CompilerInvocationSettings,
+    invocation_settings::GlueCompilerInvocationSettings,
 };
 
 #[macro_export]
@@ -215,8 +215,8 @@ impl<'a> CompilationUnit<'a> {
     }
 }
 
-fn test_compiler_settings() -> CompilerInvocationSettings {
-    CompilerInvocationSettings {
+fn test_compiler_settings() -> GlueCompilerInvocationSettings {
+    GlueCompilerInvocationSettings {
         glue_crate_name: "glue".to_string(),
         previous_crate_name: PREVIOUS_CRATE_NAME.to_string(),
         next_crate_name: NEXT_CRATE_NAME.to_string(),

@@ -7,7 +7,7 @@ use anyhow::Result as AnyResult;
 
 use crate::{
     comparator::{ApiComparator, Comparator, Diff},
-    invocation_settings::CompilerInvocationSettings,
+    invocation_settings::GlueCompilerInvocationSettings,
     public_api::ApiItem,
 };
 
@@ -20,7 +20,7 @@ pub(crate) enum InstrumentedCompiler {
     Running {
         file_name: String,
         code: String,
-        settings: CompilerInvocationSettings,
+        settings: GlueCompilerInvocationSettings,
     },
     Finished(AnyResult<ChangeSet>),
 }
@@ -29,7 +29,7 @@ impl InstrumentedCompiler {
     pub(crate) fn new(
         file_name: String,
         code: String,
-        settings: CompilerInvocationSettings,
+        settings: GlueCompilerInvocationSettings,
     ) -> InstrumentedCompiler {
         InstrumentedCompiler::Running {
             file_name,
@@ -56,7 +56,7 @@ impl InstrumentedCompiler {
         }
     }
 
-    fn settings(&self) -> &CompilerInvocationSettings {
+    fn settings(&self) -> &GlueCompilerInvocationSettings {
         match self {
             InstrumentedCompiler::Running { settings, .. } => settings,
             _ => panic!("`settings` called on a non-finished compiler"),

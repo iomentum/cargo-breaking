@@ -1,11 +1,7 @@
 mod git;
 pub mod glue_gen;
 
-use crate::{
-    comparator::utils,
-    compiler::{Compiler, InstrumentedCompiler, StandardCompiler},
-    invocation_settings::CompilerInvocationSettings,
-};
+use crate::{comparator::utils, invocation_settings::GlueCompilerInvocationSettings};
 
 use std::{env, process::Command};
 
@@ -83,7 +79,7 @@ pub(crate) enum InvocationContext {
     /// crate.
     GlueFromCargo {
         args: Vec<String>,
-        settings: CompilerInvocationSettings,
+        settings: GlueCompilerInvocationSettings,
     },
 }
 
@@ -95,7 +91,7 @@ impl InvocationContext {
             if Self::compilation_target_is_a_dependency(args.as_slice()) {
                 Ok(Self::DepFromCargo { args })
             } else {
-                let settings = CompilerInvocationSettings::from_env()
+                let settings = GlueCompilerInvocationSettings::from_env()
                     .context("Failed to load compiler invocation settings")?;
 
                 Ok(Self::GlueFromCargo { args, settings })

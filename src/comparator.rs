@@ -8,7 +8,7 @@ use std::{
     hash::Hash,
 };
 
-use crate::{invocation_settings::CompilerInvocationSettings, public_api::ApiItem};
+use crate::{invocation_settings::GlueCompilerInvocationSettings, public_api::ApiItem};
 
 use semver::{BuildMetadata, Prerelease, Version};
 
@@ -118,7 +118,7 @@ pub(crate) trait Comparator {
 impl<'tcx> ApiComparator<'tcx> {
     pub(crate) fn from_tcx_and_settings(
         tcx: TyCtxt<'tcx>,
-        settings: CompilerInvocationSettings,
+        settings: GlueCompilerInvocationSettings,
     ) -> AnyResult<ApiComparator> {
         // get prev and next
         let (prev, curr) = get_previous_and_next_nums(
