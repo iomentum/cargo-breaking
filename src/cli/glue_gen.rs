@@ -56,13 +56,25 @@ impl GlueCrateGenerator {
         Self::generate_version(temp_dir.path(), previous_crate_name.as_str())
             .context("Failed to generate previous crate")?;
 
-        self.add_glue(temp_dir.path())
-            .context("Failed to add glue code")?;
+        self.add_glue(
+            temp_dir.path(),
+            previous_crate_name.as_str(),
+            next_crate_name.as_str(),
+        )
+        .context("Failed to add glue code")?;
 
-        self.generate_settings_file(temp_dir.path(), previous_crate_name, next_crate_name)
-            .context("Failed to generate the settings file")?;
+        self.generate_settings_file(
+            temp_dir.path(),
+            previous_crate_name.clone(),
+            next_crate_name.clone(),
+        )
+        .context("Failed to generate the settings file")?;
 
-        Ok(GlueCrate { temp_dir })
+        Ok(GlueCrate {
+            temp_dir,
+            previous_crate_name,
+            next_crate_name,
+        })
     }
 
     fn create_temp_dir() -> AnyResult<TempDir> {
@@ -102,38 +114,51 @@ impl GlueCrateGenerator {
         ))
     }
 
-    fn add_glue(&self, glue_path: &Path) -> AnyResult<()> {
-        Self::add_glue_code(glue_path).context("Failed to write glue code")?;
-        self.add_glue_manifest(glue_path)
+    fn add_glue(&self, glue_path: &Path, previous_crate: &str, next_crate: &str) -> AnyResult<()> {
+        Self::add_glue_code(glue_path, previous_crate, next_crate)
+            .context("Failed to write glue code")?;
+        self.add_glue_manifest(glue_path, previous_crate, next_crate)
             .context("Failed to write manifest")
     }
 
-    fn add_glue_code(glue_path: &Path) -> AnyResult<()> {
+    fn add_glue_code(glue_path: &Path, previous_crate: &str, next_crate: &str) -> AnyResult<()> {
         let out_dir = glue_path.to_path_buf().tap_mut(|p| p.push("src"));
         fs::create_dir_all(out_dir.as_path()).context("Failed to create glue code directory")?;
 
         let out_file = out_dir.tap_mut(|p| p.push("lib.rs"));
-        fs::write(out_file, GLUE_CODE).context("Failed to write glue code file")
+        fs::write(
+            out_file,
+            format!(
+                "extern crate {};\nextern crate {};",
+                previous_crate, next_crate
+            ),
+        )
+        .context("Failed to write glue code file")
     }
 
-    fn add_glue_manifest(&self, glue_path: &Path) -> AnyResult<()> {
+    fn add_glue_manifest(
+        &self,
+        glue_path: &Path,
+        previous_crate: &str,
+        next_crate: &str,
+    ) -> AnyResult<()> {
         let out_file = glue_path.to_path_buf().tap_mut(|p| p.push("Cargo.toml"));
-        let manifest_content = self.manifest_content();
+        let manifest_content = self.manifest_content(previous_crate, next_crate);
 
         fs::write(out_file, manifest_content).context("Failed to write manifest file")
     }
 
-    fn manifest_content(&self) -> String {
+    fn manifest_content(&self, previous_crate: &str, next_crate: &str) -> String {
         let mut tmp = COMMON_MANIFEST_CODE.to_owned();
 
         tmp.push_str(&format!(
             "previous = {{ path = \"{}\", package = \"{}\" }}\n",
-            PREVIOUS_CRATE_NAME, self.package_name,
+            previous_crate, self.package_name,
         ));
 
         tmp.push_str(&format!(
             "next = {{ path = \"{}\", package = \"{}\" }}\n",
-            NEXT_CRATE_NAME, self.package_name,
+            next_crate, self.package_name,
         ));
 
         tmp
@@ -198,6 +223,8 @@ fn append_to_package_version(manifest_path: &Path, to_append: &str) -> AnyResult
 #[derive(Debug)]
 pub(crate) struct GlueCrate {
     temp_dir: TempDir,
+    previous_crate_name: String,
+    next_crate_name: String,
 }
 
 impl GlueCrate {
