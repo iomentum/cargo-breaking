@@ -31,13 +31,22 @@ version = "0.0.1"
 pub(crate) struct GlueCrateGenerator {
     comparison_ref: String,
     package_name: String,
+    previous_crate_name: String,
+    next_crate_name: String,
 }
 
 impl GlueCrateGenerator {
     pub(crate) fn new(package_name: String, comparison_ref: String) -> GlueCrateGenerator {
+        let random_suffix: &str = Word(EN).fake();
+
+        let previous_crate_name = format!("{}-{}", PREVIOUS_CRATE_NAME, random_suffix);
+        let next_crate_name = format!("{}-{}", NEXT_CRATE_NAME, random_suffix);
+
         GlueCrateGenerator {
             comparison_ref,
             package_name,
+            previous_crate_name,
+            next_crate_name,
         }
     }
 
@@ -45,35 +54,32 @@ impl GlueCrateGenerator {
     pub(crate) fn generate(self) -> AnyResult<GlueCrate> {
         let temp_dir = Self::create_temp_dir().context("Failed to create temporary directory")?;
 
-        let random_suffix: &str = Word(EN).fake();
-
-        let previous_crate_name = format!("{}-{}", PREVIOUS_CRATE_NAME, random_suffix);
-        let next_crate_name = format!("{}-{}", NEXT_CRATE_NAME, random_suffix);
-
-        Self::generate_version(temp_dir.path(), next_crate_name.as_str())
+        Self::generate_version(temp_dir.path(), self.next_crate_name.as_str())
             .context("Failed to generate next crate")?;
 
-        Self::generate_version(temp_dir.path(), previous_crate_name.as_str())
+        Self::generate_version(temp_dir.path(), self.previous_crate_name.as_str())
             .context("Failed to generate previous crate")?;
 
-        self.add_glue(
+        Self::add_glue(
             temp_dir.path(),
-            previous_crate_name.as_str(),
-            next_crate_name.as_str(),
+            self.package_name.as_str(),
+            self.previous_crate_name.as_str(),
+            self.next_crate_name.as_str(),
         )
         .context("Failed to add glue code")?;
 
-        self.generate_settings_file(
+        Self::generate_settings_file(
             temp_dir.path(),
-            previous_crate_name.clone(),
-            next_crate_name.clone(),
+            self.package_name,
+            self.previous_crate_name.clone(),
+            self.next_crate_name.clone(),
         )
         .context("Failed to generate the settings file")?;
 
         Ok(GlueCrate {
             temp_dir,
-            previous_crate_name,
-            next_crate_name,
+            previous_crate_name: self.previous_crate_name,
+            next_crate_name: self.next_crate_name,
         })
     }
 
@@ -114,10 +120,15 @@ impl GlueCrateGenerator {
         ))
     }
 
-    fn add_glue(&self, glue_path: &Path, previous_crate: &str, next_crate: &str) -> AnyResult<()> {
+    fn add_glue(
+        glue_path: &Path,
+        package_name: &str,
+        previous_crate: &str,
+        next_crate: &str,
+    ) -> AnyResult<()> {
         Self::add_glue_code(glue_path, previous_crate, next_crate)
             .context("Failed to write glue code")?;
-        self.add_glue_manifest(glue_path, previous_crate, next_crate)
+        Self::add_glue_manifest(glue_path, package_name, previous_crate, next_crate)
             .context("Failed to write manifest")
     }
 
@@ -137,41 +148,41 @@ impl GlueCrateGenerator {
     }
 
     fn add_glue_manifest(
-        &self,
         glue_path: &Path,
+        package_name: &str,
         previous_crate: &str,
         next_crate: &str,
     ) -> AnyResult<()> {
         let out_file = glue_path.to_path_buf().tap_mut(|p| p.push("Cargo.toml"));
-        let manifest_content = self.manifest_content(previous_crate, next_crate);
+        let manifest_content = Self::manifest_content(package_name, previous_crate, next_crate);
 
         fs::write(out_file, manifest_content).context("Failed to write manifest file")
     }
 
-    fn manifest_content(&self, previous_crate: &str, next_crate: &str) -> String {
+    fn manifest_content(package_name: &str, previous_crate: &str, next_crate: &str) -> String {
         let mut tmp = COMMON_MANIFEST_CODE.to_owned();
 
         tmp.push_str(&format!(
             "previous = {{ path = \"{}\", package = \"{}\" }}\n",
-            previous_crate, self.package_name,
+            previous_crate, package_name,
         ));
 
         tmp.push_str(&format!(
             "next = {{ path = \"{}\", package = \"{}\" }}\n",
-            next_crate, self.package_name,
+            next_crate, package_name,
         ));
 
         tmp
     }
 
     fn generate_settings_file(
-        &self,
         glue_path: &Path,
+        package_name: String,
         previous_crate: String,
         next_crate: String,
     ) -> AnyResult<()> {
         let settings = GlueCompilerInvocationSettings::from_package_and_crate_names(
-            self.package_name.clone(),
+            package_name,
             previous_crate,
             next_crate,
         );
