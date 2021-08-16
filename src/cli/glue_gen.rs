@@ -10,7 +10,11 @@ use semver::Version;
 use tap::Tap;
 use tempfile::TempDir;
 
-use crate::{cli::git::CrateRepo, invocation_settings::CompilerInvocationSettings};
+use crate::{
+    cli::git::CrateRepo,
+    comparator::utils::{NEXT_CRATE_NAME, PREVIOUS_CRATE_NAME},
+    invocation_settings::CompilerInvocationSettings,
+};
 
 use super::git::GitBackend;
 
@@ -63,7 +67,7 @@ impl GlueCrateGenerator {
     }
 
     fn copy_next_version(glue_path: &Path) -> AnyResult<()> {
-        let dest = glue_path.to_path_buf().tap_mut(|p| p.push("next"));
+        let dest = glue_path.to_path_buf().tap_mut(|p| p.push(NEXT_CRATE_NAME));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
         dir::copy(Path::new("."), dest, &CopyOptions::new())
@@ -81,11 +85,12 @@ impl GlueCrateGenerator {
 
         let manifest_path = glue_path
             .to_path_buf()
-            .tap_mut(|p| p.push("next"))
+            .tap_mut(|p| p.push(NEXT_CRATE_NAME))
             .tap_mut(|p| p.push("Cargo.toml"));
 
-        append_to_package_version(&manifest_path, "-next")
-            .context("Failed to change package version for `next`")
+        append_to_package_version(&manifest_path, format!("-{}", NEXT_CRATE_NAME).as_str()).context(
+            format!("Failed to change package version for `{}`", NEXT_CRATE_NAME),
+        )
     }
 
     fn generate_previous_version(&self, glue_path: &Path) -> AnyResult<()> {
@@ -96,7 +101,9 @@ impl GlueCrateGenerator {
     fn copy_previous_version(&self, glue_path: &Path) -> AnyResult<()> {
         let mut repo = CrateRepo::current().context("Failed to get git repository")?;
 
-        let dest = glue_path.to_path_buf().tap_mut(|p| p.push("previous"));
+        let dest = glue_path
+            .to_path_buf()
+            .tap_mut(|p| p.push(PREVIOUS_CRATE_NAME));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
         repo.run_in(self.comparison_ref.as_str(), || {
@@ -112,11 +119,14 @@ impl GlueCrateGenerator {
 
         let manifest_path = glue_path
             .to_path_buf()
-            .tap_mut(|p| p.push("previous"))
+            .tap_mut(|p| p.push(PREVIOUS_CRATE_NAME))
             .tap_mut(|p| p.push("Cargo.toml"));
 
-        append_to_package_version(&manifest_path, "-previous")
-            .context("Failed to change package version for `previous`")
+        append_to_package_version(&manifest_path, format!("-{}", PREVIOUS_CRATE_NAME).as_str())
+            .context(format!(
+                "Failed to change package version for `{}`",
+                PREVIOUS_CRATE_NAME
+            ))
     }
 
     fn add_glue(&self, glue_path: &Path) -> AnyResult<()> {
@@ -145,13 +155,13 @@ impl GlueCrateGenerator {
         let mut tmp = COMMON_MANIFEST_CODE.to_owned();
 
         tmp.push_str(&format!(
-            "previous = {{ path = \"previous\", package = \"{}\" }}\n",
-            self.package_name,
+            "previous = {{ path = \"{}\", package = \"{}\" }}\n",
+            PREVIOUS_CRATE_NAME, self.package_name,
         ));
 
         tmp.push_str(&format!(
-            "next = {{ path = \"next\", package = \"{}\" }}\n",
-            self.package_name,
+            "next = {{ path = \"{}\", package = \"{}\" }}\n",
+            NEXT_CRATE_NAME, self.package_name,
         ));
 
         tmp
@@ -165,8 +175,8 @@ impl GlueCrateGenerator {
     fn invocation_settings(&self) -> CompilerInvocationSettings {
         CompilerInvocationSettings {
             glue_crate_name: "glue".to_string(),
-            previous_crate_name: "previous".to_string(),
-            next_crate_name: "next".to_string(),
+            previous_crate_name: PREVIOUS_CRATE_NAME.to_string(),
+            next_crate_name: NEXT_CRATE_NAME.to_string(),
             // TODO: use actual version instead.
             crate_version: Version::new(0, 0, 1),
             package_name: self.package_name.clone(),

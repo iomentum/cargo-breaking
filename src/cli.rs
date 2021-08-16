@@ -88,12 +88,12 @@ pub(crate) enum InvocationContext {
 }
 
 impl InvocationContext {
-    pub(crate) fn from_env() -> AnyResult<InvocationContext> {
+    pub(crate) fn from_env() -> AnyResult<Self> {
         if Self::is_run_by_cargo() {
             let args = env::args().skip(1).collect::<Vec<_>>();
 
-            if Self::should_build_a_dependency(args.as_slice()) {
-                Ok(InvocationContext::DepFromCargo { args })
+            if Self::compilation_target_is_a_dependency(args.as_slice()) {
+                Ok(Self::DepFromCargo { args })
             } else {
                 let settings = CompilerInvocationSettings::from_env()
                     .context("Failed to load compiler invocation settings")?;
@@ -130,7 +130,7 @@ impl InvocationContext {
         arg_value.as_ref().map(String::as_str) == Some("___")
     }
 
-    pub(crate) fn should_build_a_dependency(args: &[String]) -> bool {
+    pub(crate) fn compilation_target_is_a_dependency(args: &[String]) -> bool {
         // TODO: this is not clean and not future proof, as cargo may change
         // its argument ordering at any moment.
         //
