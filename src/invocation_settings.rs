@@ -8,8 +8,10 @@ use tap::Tap;
 /// The invocation settings.
 ///
 /// When cargo-breaking is invoked by the user via CLI, cargo-breaking must
-/// generate a bunch of things. For some reasons, some must be randomely
-/// generated, and some identifiers must be passed to the cargo-breaking
+/// generate a bunch of things such as crate names, and versions.
+///
+/// In order to make sure we won't clash with an already existing crate name when we call rustc
+/// some must be randomly generated, and some identifiers must be passed to the cargo-breaking
 /// compiler.
 ///
 /// This structure holds all the information that a cargo-breaking compiler
@@ -26,7 +28,7 @@ pub(crate) struct CompilerInvocationSettings {
 }
 
 impl CompilerInvocationSettings {
-    pub(crate) fn from_env() -> AnyResult<CompilerInvocationSettings> {
+    pub(crate) fn from_env() -> AnyResult<Self> {
         let file_path = Path::new("cargo-breaking-settings.toml");
         let file_content =
             fs::read_to_string(file_path).context("Failed to read invocation settings ffile")?;
