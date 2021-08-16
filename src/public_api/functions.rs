@@ -2,7 +2,7 @@ use rustc_span::def_id::DefId;
 
 use rustc_middle::ty::TyCtxt;
 
-use crate::{comparator::Diff, glue::Change};
+use crate::{comparator::Diff, compiler::Change};
 
 use super::ApiItem;
 

@@ -13,7 +13,6 @@ mod cli;
 mod comparator;
 mod compiler;
 mod diagnosis;
-mod glue;
 pub(crate) mod invocation_settings;
 mod manifest;
 mod public_api;
@@ -22,7 +21,7 @@ use anyhow::{Context, Result as AnyResult};
 use cli::{BuildEnvironment, InvocationContext};
 use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
-use glue::ChangeSet;
+use compiler::ChangeSet;
 use manifest::Manifest;
 
 use crate::cli::glue_gen::GlueCrateGenerator;

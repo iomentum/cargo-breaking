@@ -4,7 +4,7 @@ mod sysroot_guesser;
 
 use anyhow::Result as AnyResult;
 
-pub(crate) use instrumented_compiler::InstrumentedCompiler;
+pub(crate) use instrumented_compiler::{Change, ChangeSet, InstrumentedCompiler};
 pub(crate) use standard_compiler::StandardCompiler;
 
 use sysroot_guesser::SysrootGuesser;

@@ -16,7 +16,7 @@ pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    glue::{ChangeSet, InstrumentedCompiler},
+    compiler::{Change, ChangeSet, InstrumentedCompiler},
     invocation_settings::GlueCompilerInvocationSettings,
 };
 
