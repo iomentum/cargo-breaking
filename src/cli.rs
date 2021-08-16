@@ -1,8 +1,7 @@
 mod git;
 pub mod glue_gen;
-mod standard_compiler;
 
-use crate::comparator::utils;
+use crate::compiler::{Compiler, InstrumentedCompiler, StandardCompiler};
 
 use std::{env, process::Command};
 
@@ -10,7 +9,7 @@ use anyhow::{ensure, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
-use self::{glue_gen::GlueCrate, standard_compiler::StandardCompiler};
+use glue_gen::GlueCrate;
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
 const INITIAL_VERSION_ENV_VARIABLE: &str = "INITIAL_VERSION";
@@ -40,14 +39,7 @@ impl BuildEnvironment {
     }
 
     pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
-        // TODO(scrabsha): use the API provided by the linked PR to produce a
-        // decent diff.
-        // https://github.com/iomentum/cargo-breaking/pull/28
-
-        let diff = utils::get_diff_from_sources(
-            "pub fn foo() {}",
-            "pub fn bar() {} pub fn foo(a: i32) {}",
-        )?;
+        let diff = InstrumentedCompiler::from_args(self.args)?.run()?;
 
         if !diff.is_empty() {
             println!("{}", diff);

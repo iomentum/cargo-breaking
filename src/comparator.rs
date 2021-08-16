@@ -189,8 +189,8 @@ fn crate_name_is(tcx: &TyCtxt, cnum: CrateNum, name: &str) -> bool {
 
     if let Some(extern_crate) = tcx.extern_crate(def_id) {
         match extern_crate.src {
-            ExternCrateSource::Extern(_) => tcx.item_name(def_id).as_str() == name,
-            ExternCrateSource::Path => return false,
+            ExternCrateSource::Extern(_) => tcx.def_path_str(def_id) == name,
+            ExternCrateSource::Path => false,
         }
     } else {
         false
