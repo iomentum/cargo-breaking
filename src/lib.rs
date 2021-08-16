@@ -38,7 +38,7 @@ pub fn run() -> AnyResult<()> {
                 Manifest::from_env().context("Failed to get information from the manifest file")?;
 
             let glue_crate =
-                GlueCrateGenerator::new(manifest.package_name().to_string(), comparison_ref)
+                GlueCrateGenerator::new(manifest.package_name().to_string(), comparison_ref)?
                     .generate()
                     .context("Failed to generate glue crate")?;
 

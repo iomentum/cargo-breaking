@@ -27,73 +27,66 @@ version = "0.0.1"
 [dependencies]
 "#;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct GlueCrateGenerator {
     comparison_ref: String,
     package_name: String,
     previous_crate_name: String,
     next_crate_name: String,
+    temp_dir: TempDir,
 }
 
 impl GlueCrateGenerator {
-    pub(crate) fn new(package_name: String, comparison_ref: String) -> GlueCrateGenerator {
+    pub(crate) fn new(package_name: String, comparison_ref: String) -> AnyResult<Self> {
         let random_suffix: &str = Word(EN).fake();
 
         let previous_crate_name = format!("{}-{}", PREVIOUS_CRATE_NAME, random_suffix);
         let next_crate_name = format!("{}-{}", NEXT_CRATE_NAME, random_suffix);
 
-        GlueCrateGenerator {
+        let temp_dir = tempfile::tempdir()
+            .map_err(AnyError::new)
+            .context("Failed to create temporary directory")?;
+
+        Ok(GlueCrateGenerator {
             comparison_ref,
             package_name,
             previous_crate_name,
             next_crate_name,
-        }
+            temp_dir,
+        })
     }
 
     // Returns the root path in which the glue crate is generated
     pub(crate) fn generate(self) -> AnyResult<GlueCrate> {
-        let temp_dir = Self::create_temp_dir().context("Failed to create temporary directory")?;
-
-        Self::generate_version(temp_dir.path(), self.next_crate_name.as_str())
+        self.generate_version(self.next_crate_name.as_str())
             .context("Failed to generate next crate")?;
 
-        Self::generate_version(temp_dir.path(), self.previous_crate_name.as_str())
+        self.generate_version(self.previous_crate_name.as_str())
             .context("Failed to generate previous crate")?;
 
-        Self::add_glue(
-            temp_dir.path(),
-            self.package_name.as_str(),
-            self.previous_crate_name.as_str(),
-            self.next_crate_name.as_str(),
-        )
-        .context("Failed to add glue code")?;
+        self.add_glue().context("Failed to add glue code")?;
 
-        Self::generate_settings_file(
-            temp_dir.path(),
-            self.package_name,
-            self.previous_crate_name.clone(),
-            self.next_crate_name.clone(),
-        )
-        .context("Failed to generate the settings file")?;
+        self.generate_settings_file()
+            .context("Failed to generate the settings file")?;
 
         Ok(GlueCrate {
-            temp_dir,
+            temp_dir: self.temp_dir,
             previous_crate_name: self.previous_crate_name,
             next_crate_name: self.next_crate_name,
         })
     }
 
-    fn create_temp_dir() -> AnyResult<TempDir> {
-        tempfile::tempdir().map_err(AnyError::new)
+    fn generate_version(&self, crate_name: &str) -> AnyResult<()> {
+        self.copy_code(crate_name)?;
+        self.edit_version(crate_name)
     }
 
-    fn generate_version(glue_path: &Path, crate_name: &str) -> AnyResult<()> {
-        Self::copy_code(glue_path, crate_name)?;
-        Self::edit_version(glue_path, crate_name)
-    }
-
-    fn copy_code(glue_path: &Path, crate_name: &str) -> AnyResult<()> {
-        let dest = glue_path.to_path_buf().tap_mut(|p| p.push(crate_name));
+    fn copy_code(&self, crate_name: &str) -> AnyResult<()> {
+        let dest = self
+            .temp_dir
+            .path()
+            .to_path_buf()
+            .tap_mut(|p| p.push(crate_name));
         fs::create_dir_all(dest.as_path()).context("Failed to create destination directory")?;
 
         dir::copy(Path::new("."), dest, &CopyOptions::new())
@@ -101,7 +94,7 @@ impl GlueCrateGenerator {
             .context("Failed to copy crate content")
     }
 
-    fn edit_version(glue_path: &Path, crate_name: &str) -> AnyResult<()> {
+    fn edit_version(&self, crate_name: &str) -> AnyResult<()> {
         // Cargo currently does not handle cases where two package with the same
         // name and the same version are included in a Cargo.toml, even if they
         // are both renamed. As such, we must ensure that the version of each
@@ -109,7 +102,9 @@ impl GlueCrateGenerator {
         // content of the said Cargo.toml, and to append a different string at
         // the end of the version string of each package.
 
-        let manifest_path = glue_path
+        let manifest_path = self
+            .temp_dir
+            .path()
             .to_path_buf()
             .tap_mut(|p| p.push(crate_name))
             .tap_mut(|p| p.push("Cargo.toml"));
@@ -120,20 +115,17 @@ impl GlueCrateGenerator {
         ))
     }
 
-    fn add_glue(
-        glue_path: &Path,
-        package_name: &str,
-        previous_crate: &str,
-        next_crate: &str,
-    ) -> AnyResult<()> {
-        Self::add_glue_code(glue_path, previous_crate, next_crate)
-            .context("Failed to write glue code")?;
-        Self::add_glue_manifest(glue_path, package_name, previous_crate, next_crate)
-            .context("Failed to write manifest")
+    fn add_glue(&self) -> AnyResult<()> {
+        self.add_glue_code().context("Failed to write glue code")?;
+        self.add_glue_manifest().context("Failed to write manifest")
     }
 
-    fn add_glue_code(glue_path: &Path, previous_crate: &str, next_crate: &str) -> AnyResult<()> {
-        let out_dir = glue_path.to_path_buf().tap_mut(|p| p.push("src"));
+    fn add_glue_code(&self) -> AnyResult<()> {
+        let out_dir = self
+            .temp_dir
+            .path()
+            .to_path_buf()
+            .tap_mut(|p| p.push("src"));
         fs::create_dir_all(out_dir.as_path()).context("Failed to create glue code directory")?;
 
         let out_file = out_dir.tap_mut(|p| p.push("lib.rs"));
@@ -141,24 +133,28 @@ impl GlueCrateGenerator {
             out_file,
             format!(
                 "extern crate {};\nextern crate {};",
-                previous_crate, next_crate
+                self.previous_crate_name, self.next_crate_name
             ),
         )
         .context("Failed to write glue code file")
     }
 
-    fn add_glue_manifest(
-        glue_path: &Path,
-        package_name: &str,
-        previous_crate: &str,
-        next_crate: &str,
-    ) -> AnyResult<()> {
-        let out_file = glue_path.to_path_buf().tap_mut(|p| p.push("Cargo.toml"));
-        let manifest_content = Self::manifest_content(package_name, previous_crate, next_crate);
+    fn add_glue_manifest(&self) -> AnyResult<()> {
+        let out_file = self
+            .temp_dir
+            .path()
+            .to_path_buf()
+            .tap_mut(|p| p.push("Cargo.toml"));
+        let manifest_content = Self::manifest_content(
+            self.package_name.as_str(),
+            self.previous_crate_name.as_str(),
+            self.next_crate_name.as_str(),
+        );
 
         fs::write(out_file, manifest_content).context("Failed to write manifest file")
     }
 
+    // keeping this baby out for now so we can write unit tests at some point...
     fn manifest_content(package_name: &str, previous_crate: &str, next_crate: &str) -> String {
         let mut tmp = COMMON_MANIFEST_CODE.to_owned();
 
@@ -175,25 +171,13 @@ impl GlueCrateGenerator {
         tmp
     }
 
-    fn generate_settings_file(
-        glue_path: &Path,
-        package_name: String,
-        previous_crate: String,
-        next_crate: String,
-    ) -> AnyResult<()> {
+    fn generate_settings_file(&self) -> AnyResult<()> {
         let settings = GlueCompilerInvocationSettings::from_package_and_crate_names(
-            package_name,
-            previous_crate,
-            next_crate,
+            self.package_name.clone(),
+            self.previous_crate_name.clone(),
+            self.next_crate_name.clone(),
         );
-        Self::write_settings_file(settings, glue_path)
-    }
-
-    fn write_settings_file(
-        settings: GlueCompilerInvocationSettings,
-        glue_path: &Path,
-    ) -> AnyResult<()> {
-        settings.write_to(glue_path)
+        settings.write_to(self.temp_dir.path())
     }
 }
 
