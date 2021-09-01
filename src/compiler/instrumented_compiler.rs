@@ -1,47 +1,73 @@
-use std::{
-    cmp::Ordering,
-    fmt::{self, Display, Formatter},
-};
-
-use anyhow::Result as AnyResult;
-
-use rustc_driver::{Callbacks, Compilation};
-use rustc_interface::Config;
-use rustc_session::config::Input;
-use rustc_span::FileName;
-
+use super::Compiler;
 use crate::{
     comparator::{ApiComparator, Comparator, Diff},
     invocation_settings::GlueCompilerInvocationSettings,
     public_api::ApiItem,
 };
+use anyhow::{anyhow, Context, Result as AnyResult};
+use rustc_driver::{Callbacks, Compilation, RunCompiler};
+use rustc_interface::Config;
+use rustc_session::config::Input;
+use rustc_span::FileName;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Display, Formatter},
+    mem,
+};
 
+/// A compiler that is capable of running the static analysis required to
+/// extract the API the previous and next version of the crate we're analyzing.
 pub(crate) enum InstrumentedCompiler {
-    Running {
+    /// Represents the compiler after its creation. No process has been done.
+    Ready {
+        args: Vec<String>,
         file_name: String,
         code: String,
-        settings: GlueCompilerInvocationSettings,
     },
+
+    /// Represents the compiler before the static analysis step.
+    Running { file_name: String, code: String },
+
+    /// Represents the compiler after the static analysis step.
     Finished(AnyResult<ChangeSet>),
 }
 
 impl InstrumentedCompiler {
-    pub(crate) fn new(
-        file_name: String,
-        code: String,
-        settings: GlueCompilerInvocationSettings,
-    ) -> InstrumentedCompiler {
-        InstrumentedCompiler::Running {
-            file_name,
-            code,
-            settings,
-        }
+    pub(crate) fn from_args(mut args: Vec<String>) -> AnyResult<InstrumentedCompiler> {
+        // See StandardCompiler::from_args for an explanation of why it is
+        // necessary to append the sysroot argument.
+
+        let sysroot_path = Self::sysroot_path().context("Failed to get the sysroot path")?;
+
+        args.push(format!("--sysroot={}", sysroot_path));
+
+        Ok(InstrumentedCompiler::Ready {
+            args,
+            file_name: "src/lib.rs".to_string(),
+            code: "extern crate previous; extern crate next;".to_string(),
+        })
     }
 
-    pub(crate) fn finalize(self) -> AnyResult<ChangeSet> {
+    pub(crate) fn faked(
+        file_name: String,
+        code: String,
+        mut args: Vec<String>,
+    ) -> AnyResult<InstrumentedCompiler> {
+        let sysroot_path = Self::sysroot_path().context("Failed to get the sysroot path")?;
+
+        args.push(format!("--sysroot={}", sysroot_path));
+
+        Ok(InstrumentedCompiler::Ready {
+            file_name,
+            code,
+            args,
+        })
+    }
+
+    fn finalize(self) -> AnyResult<ChangeSet> {
         match self {
             InstrumentedCompiler::Finished(rslt) => rslt,
-            _ => panic!("`finalize` is called on a non-completed compiler"),
+            _ => panic!("`finalize` is called on a non-finished compiler"),
         }
     }
 
@@ -50,17 +76,50 @@ impl InstrumentedCompiler {
             InstrumentedCompiler::Running {
                 file_name, code, ..
             } => (file_name.as_str(), code.as_str()),
-            InstrumentedCompiler::Finished(_) => {
+
+            _ => {
                 panic!("`file_name_and_code` called on a non-running compiler")
             }
         }
     }
+}
 
-    fn settings(&self) -> &GlueCompilerInvocationSettings {
+impl Compiler for InstrumentedCompiler {
+    type Output = ChangeSet;
+
+    fn prepare(&mut self) -> Vec<String> {
         match self {
-            InstrumentedCompiler::Running { settings, .. } => settings,
-            _ => panic!("`settings` called on a non-finished compiler"),
+            InstrumentedCompiler::Ready {
+                args,
+                file_name,
+                code,
+            } => {
+                // We're moving data out of &mut self, but this is fine since
+                // we will reassign to self next.
+
+                let args = mem::take(args);
+                let file_name = mem::take(file_name);
+                let code = mem::take(code);
+
+                *self = InstrumentedCompiler::Running { file_name, code };
+                args
+            }
+
+            _ => panic!("`start` called on a non-ready compiler"),
         }
+    }
+
+    fn run(mut self) -> AnyResult<ChangeSet> {
+        // This call to `to_vec` occurs for borrowing reasons. See the comment
+        // in `StandardCompiler::run` for more.
+
+        let args = self.prepare();
+
+        RunCompiler::new(args.as_slice(), &mut self)
+            .run()
+            .map_err(|_| anyhow!("Failed to compile crate"))?;
+
+        self.finalize()
     }
 }
 
@@ -86,12 +145,12 @@ impl Callbacks for InstrumentedCompiler {
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
-        let settings = self.settings().clone();
-
         // get prev & next
         let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
-            let comparator = ApiComparator::from_tcx_and_settings(tcx, settings)?;
-            get_changeset(comparator)
+            // TODO (sasha) <3
+            todo!();
+            // let comparator = ApiComparator::from_tcx_and_settings(tcx)?;
+            // get_changeset(comparator)
         });
 
         *self = InstrumentedCompiler::Finished(changeset);
@@ -100,6 +159,8 @@ impl Callbacks for InstrumentedCompiler {
         Compilation::Stop
     }
 }
+
+// --------------------------------------------------------
 
 pub struct ChangeSet {
     changes: Vec<Change>,

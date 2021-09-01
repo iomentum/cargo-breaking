@@ -38,6 +38,7 @@ pub(crate) struct GlueCrateGenerator {
 
 impl GlueCrateGenerator {
     pub(crate) fn new(package_name: String, comparison_ref: String) -> AnyResult<Self> {
+        // We want to avoid any name clash with an actual crate (that can be a dependency)
         let random_suffix: &str = Word(EN).fake();
 
         let previous_crate_name = format!("{}-{}", PREVIOUS_CRATE_NAME, random_suffix);
@@ -58,11 +59,8 @@ impl GlueCrateGenerator {
 
     // Returns the root path in which the glue crate is generated
     pub(crate) fn generate(self) -> AnyResult<GlueCrate> {
-        self.generate_version(self.next_crate_name.as_str())
+        self.generate_versions()
             .context("Failed to generate next crate")?;
-
-        self.generate_version(self.previous_crate_name.as_str())
-            .context("Failed to generate previous crate")?;
 
         self.add_glue().context("Failed to add glue code")?;
 
@@ -74,6 +72,17 @@ impl GlueCrateGenerator {
             previous_crate_name: self.previous_crate_name,
             next_crate_name: self.next_crate_name,
         })
+    }
+
+    fn generate_versions(&self) -> AnyResult<()> {
+        // copy the latest changes
+        self.generate_version(self.next_crate_name.as_str())?;
+
+        // copy the previous changes
+        let mut repo = CrateRepo::new().context("Failed to get git repository")?;
+        repo.run_in(self.comparison_ref.as_str(), || {
+            self.generate_version(self.previous_crate_name.as_str())
+        })?
     }
 
     fn generate_version(&self, crate_name: &str) -> AnyResult<()> {

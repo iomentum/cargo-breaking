@@ -2,7 +2,11 @@ mod git;
 pub mod glue_gen;
 mod standard_compiler;
 
-use crate::{comparator::utils, invocation_settings::GlueCompilerInvocationSettings};
+use crate::{
+    comparator::utils,
+    compiler::{Compiler, InstrumentedCompiler, StandardCompiler},
+    invocation_settings::GlueCompilerInvocationSettings,
+};
 
 use std::{env, process::Command};
 
@@ -10,7 +14,7 @@ use anyhow::{ensure, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
-use self::{glue_gen::GlueCrate, standard_compiler::StandardCompiler};
+use self::glue_gen::GlueCrate;
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
 const INITIAL_VERSION_ENV_VARIABLE: &str = "INITIAL_VERSION";
@@ -40,14 +44,7 @@ impl BuildEnvironment {
     }
 
     pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
-        // TODO(scrabsha): use the API provided by the linked PR to produce a
-        // decent diff.
-        // https://github.com/iomentum/cargo-breaking/pull/28
-
-        let diff = utils::get_diff_from_sources(
-            "pub fn foo() {}",
-            "pub fn bar() {} pub fn foo(a: i32) {}",
-        )?;
+        let diff = InstrumentedCompiler::from_args(self.args)?.run()?;
 
         if !diff.is_empty() {
             println!("{}", diff);
@@ -127,11 +124,6 @@ impl InvocationContext {
 
     fn is_run_by_cargo() -> bool {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
-    }
-
-    fn is_target_information_invocation() -> bool {
-        let arg_value = env::args().nth(4);
-        arg_value.as_ref().map(String::as_str) == Some("___")
     }
 
     pub(crate) fn compilation_target_is_a_dependency(args: &[String]) -> bool {
