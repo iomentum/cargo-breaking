@@ -165,7 +165,7 @@ use std::{cell::RefCell, rc::Rc};
 struct FakeRepo<'a> {
     on_head_name: Box<dyn Fn(&FakeRepo) -> AnyResult<Option<String>> + 'a>,
     on_source_branch: Box<dyn for<'b> Fn(&'b FakeRepo) -> Option<&'b str> + 'a>,
-    on_set_source_branch: Rc<dyn Fn(&mut FakeRepo<'a>, &str) + 'a>,
+    on_set_source_branch: Rc<dyn Fn(&mut FakeRepo<'a>, String) + 'a>,
     on_has_uncommited_changes: Box<dyn Fn(&FakeRepo<'a>) -> bool + 'a>,
     on_stash_push: Rc<dyn Fn(&mut FakeRepo<'a>) -> AnyResult<()> + 'a>,
     on_stash_pop: Rc<dyn Fn(&mut FakeRepo<'a>) -> AnyResult<()> + 'a>,
@@ -176,10 +176,6 @@ struct FakeRepo<'a> {
 
 #[cfg(test)]
 impl<'a> GitBackend for FakeRepo<'a> {
-    fn current() -> AnyResult<Self> {
-        Ok(FakeRepo::new())
-    }
-
     fn head_name(&self) -> AnyResult<Option<String>> {
         self.add_action(FakeRepoCall::HeadName);
         (self.on_head_name)(self)
@@ -191,11 +187,11 @@ impl<'a> GitBackend for FakeRepo<'a> {
     }
 
     fn set_source_branch(&mut self, name: String) {
-        self.add_action(FakeRepoCall::SetPreviousBranch(name));
+        self.add_action(FakeRepoCall::SetPreviousBranch(name.clone()));
         self.on_set_source_branch.clone()(self, name)
     }
 
-    fn needs_stash(&self) -> bool {
+    fn has_uncommited_changes(&self) -> bool {
         self.add_action(FakeRepoCall::HasUncommitedChanges);
         (self.on_has_uncommited_changes)(self)
     }
@@ -257,8 +253,8 @@ impl<'a> FakeRepo<'a> {
         self
     }
 
-    fn on_needs_stash(mut self, f: impl Fn(&FakeRepo<'a>) -> bool + 'a) -> FakeRepo<'a> {
-        self.on_needs_stash = Box::new(f);
+    fn on_has_uncommited_changes(mut self, f: impl Fn(&FakeRepo<'a>) -> bool + 'a) -> FakeRepo<'a> {
+        self.on_has_uncommited_changes = Box::new(f);
         self
     }
 
@@ -310,7 +306,7 @@ mod tests {
         #[test]
         fn when_stash() {
             let mut repo = FakeRepo::new()
-                .on_needs_stash(|_| true)
+                .on_has_uncommited_changes(|_| true)
                 .on_stash_push(|_| Ok(()))
                 .on_head_name(|_| Ok(Some("foo".to_owned())))
                 .on_checkout(|_, _| Ok(()))
@@ -332,7 +328,7 @@ mod tests {
         #[test]
         fn when_non_stash() {
             let mut repo = FakeRepo::new()
-                .on_needs_stash(|_| false)
+                .on_has_uncommited_changes(|_| false)
                 .on_head_name(|_| Ok(Some("bar".to_owned())))
                 .on_checkout(|_, _| Ok(()))
                 .on_set_source_branch(|_, _| ());
@@ -340,7 +336,7 @@ mod tests {
             repo.switch_to("baz").unwrap();
 
             let expected_calls = [
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
                 FakeRepoCall::HeadName,
                 FakeRepoCall::CheckoutTo("baz".to_owned()),
                 FakeRepoCall::SetPreviousBranch("bar".to_owned()),
@@ -358,7 +354,7 @@ mod tests {
             let mut repo = FakeRepo::new()
                 .on_source_branch(|_| Some("bar"))
                 .on_checkout(|_, _| Ok(()))
-                .on_needs_stash(|_| true)
+                .on_has_uncommited_changes(|_| true)
                 .on_stash_pop(|_| Ok(()));
 
             repo.switch_back().unwrap();
@@ -366,7 +362,7 @@ mod tests {
             let expected_calls = [
                 FakeRepoCall::PreviousBranch,
                 FakeRepoCall::CheckoutTo("bar".to_owned()),
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
                 FakeRepoCall::StashPop,
             ];
 
@@ -378,14 +374,14 @@ mod tests {
             let mut repo = FakeRepo::new()
                 .on_source_branch(|_| Some("bar"))
                 .on_checkout(|_, _| Ok(()))
-                .on_needs_stash(|_| false);
+                .on_has_uncommited_changes(|_| false);
 
             repo.switch_back().unwrap();
 
             let expected_calls = [
                 FakeRepoCall::PreviousBranch,
                 FakeRepoCall::CheckoutTo("bar".to_owned()),
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
             ];
 
             assert_eq!(repo.actions.borrow().as_ref(), expected_calls);
