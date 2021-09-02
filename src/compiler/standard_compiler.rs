@@ -34,6 +34,10 @@ impl StandardCompiler {
 
         Ok(StandardCompiler { args })
     }
+
+    pub(crate) fn faked(mut args: Vec<String>, code: String) -> AnyResult<StandardCompiler> {
+        todo!()
+    }
 }
 
 impl Compiler for StandardCompiler {

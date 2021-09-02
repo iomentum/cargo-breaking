@@ -16,7 +16,7 @@ pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    compiler::{Change, ChangeSet, Compiler, InstrumentedCompiler},
+    compiler::{Change, ChangeSet, Compiler, InstrumentedCompiler, StandardCompiler},
     invocation_settings::GlueCompilerInvocationSettings,
 };
 
@@ -125,16 +125,20 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
+        /*
         let mut compiler = DepCompiler {
             file_name: self.crate_name.clone(),
             code: self.code.clone(),
         };
+        */
 
-        // TODO (scrabsha) i guess /shrug
-        RunCompiler::new(args.as_slice(), &mut compiler)
+        let compiler = StandardCompiler::faked(args, self.code.clone())
+            .context("Failed to create dependency compiler")?;
+
+        compiler
             .run()
             .map(|()| self.artifacts_path())
-            .map_err(|_| anyhow!("Failed to compile crate"))
+            .context("Failed to run the dependency compiler")
     }
 
     fn diff(self) -> AnyResult<ChangeSet> {
