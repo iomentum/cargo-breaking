@@ -41,10 +41,16 @@ impl InstrumentedCompiler {
 
         args.push(format!("--sysroot={}", sysroot_path));
 
+        let config =
+            GlueCompilerInvocationSettings::from_env().context("Failed to read config file")?;
+
         Ok(InstrumentedCompiler::Ready {
             args,
             file_name: "src/lib.rs".to_string(),
-            code: "extern crate previous; extern crate next;".to_string(),
+            code: format!(
+                "extern crate {}; extern crate {};",
+                config.previous_crate_name, config.next_crate_name
+            ),
         })
     }
 
@@ -145,12 +151,18 @@ impl Callbacks for InstrumentedCompiler {
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
+        let settings = match GlueCompilerInvocationSettings::from_env() {
+            Ok(settings) => settings,
+            Err(e) => {
+                *self = InstrumentedCompiler::Finished(Err(e));
+                return Compilation::Stop;
+            }
+        };
+
         // get prev & next
         let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
-            // TODO (sasha) <3
-            todo!();
-            // let comparator = ApiComparator::from_tcx_and_settings(tcx)?;
-            // get_changeset(comparator)
+            let comparator = ApiComparator::from_tcx_and_settings(tcx, settings)?;
+            get_changeset(comparator)
         });
 
         *self = InstrumentedCompiler::Finished(changeset);

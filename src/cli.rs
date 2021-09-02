@@ -43,12 +43,6 @@ impl BuildEnvironment {
     }
 
     pub(crate) fn run_static_analysis(self) -> AnyResult<()> {
-        let diff = utils::get_diff_from_sources(
-            "pub fn foo() {}",
-            "pub fn bar() {} pub fn foo(a: i32) {}",
-        )?;
-
-        /*
         let diff = InstrumentedCompiler::from_args(self.args)?.run()?;
 
         if !diff.is_empty() {
@@ -58,8 +52,6 @@ impl BuildEnvironment {
         /*
         let next_version = diff.guess_next_version(self.initial_version);
         println!("Next version is: {}", next_version);
-        */
-
         */
 
         Ok(())

@@ -39,7 +39,7 @@ impl GlueCompilerInvocationSettings {
             next_crate_name,
             // TODO: use actual version instead.
             crate_version: Version::new(0, 0, 1),
-            package_name: package_name,
+            package_name,
         }
     }
     pub(crate) fn from_env() -> AnyResult<Self> {

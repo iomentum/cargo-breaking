@@ -144,7 +144,7 @@ impl CrateRepo {
     pub fn new() -> AnyResult<Self> {
         let repo = Repository::open_from_env().context("Failed to open repository")?;
 
-        let has_uncommited_changes = repo
+        let has_uncommited_changes = !repo
             .statuses(Some(StatusOptions::new().include_untracked(true)))
             .context("Failed to get current repository status")?
             .is_empty();

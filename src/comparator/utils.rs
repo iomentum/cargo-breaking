@@ -125,13 +125,6 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        /*
-        let mut compiler = DepCompiler {
-            file_name: self.crate_name.clone(),
-            code: self.code.clone(),
-        };
-        */
-
         let compiler = StandardCompiler::faked(args, self.code.clone())
             .context("Failed to create dependency compiler")?;
 
@@ -158,6 +151,16 @@ impl<'a> CompilationUnit<'a> {
             .map(|(n, p)| (n.as_str(), p.as_path()));
 
         let args = self.cli_args(dependencies_artifacts);
+
+        let settings = GlueCompilerInvocationSettings::from_package_and_crate_names(
+            "glue".to_string(),
+            "previous".to_string(),
+            "next".to_string(),
+        );
+
+        settings
+            .write_to(Path::new(""))
+            .context("Failed to write invocation settings")?;
 
         InstrumentedCompiler::faked(
             "glue".to_owned(),
@@ -189,7 +192,6 @@ impl<'a> CompilationUnit<'a> {
             .current_dir(".")
             .output()
             .unwrap();
-        let sysroot = String::from_utf8(out.stdout).unwrap();
 
         mk_string_vec! {
             "rustc",
@@ -201,7 +203,6 @@ impl<'a> CompilationUnit<'a> {
             "-C", "embed-bitcode=no",
             "--out-dir", format!("{}/deps/{}.d", self.root_path.display(), self.crate_name),
             "-A", "warnings",
-            format!("--sysroot={}", sysroot.trim()),
         }
     }
 

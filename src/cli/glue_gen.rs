@@ -41,8 +41,8 @@ impl GlueCrateGenerator {
         // We want to avoid any name clash with an actual crate (that can be a dependency)
         let random_suffix: &str = Word(EN).fake();
 
-        let previous_crate_name = format!("{}-{}", PREVIOUS_CRATE_NAME, random_suffix);
-        let next_crate_name = format!("{}-{}", NEXT_CRATE_NAME, random_suffix);
+        let previous_crate_name = format!("{}{}", PREVIOUS_CRATE_NAME, random_suffix);
+        let next_crate_name = format!("{}{}", NEXT_CRATE_NAME, random_suffix);
 
         let temp_dir = tempfile::tempdir()
             .map_err(AnyError::new)
@@ -62,10 +62,12 @@ impl GlueCrateGenerator {
         self.generate_versions()
             .context("Failed to generate next crate")?;
 
-        self.add_glue().context("Failed to add glue code")?;
-
-        self.generate_settings_file()
+        let settings = self
+            .generate_settings_file()
             .context("Failed to generate the settings file")?;
+
+        self.add_glue(&settings)
+            .context("Failed to add glue code")?;
 
         Ok(GlueCrate {
             temp_dir: self.temp_dir,
@@ -124,9 +126,10 @@ impl GlueCrateGenerator {
         ))
     }
 
-    fn add_glue(&self) -> AnyResult<()> {
+    fn add_glue(&self, settings: &GlueCompilerInvocationSettings) -> AnyResult<()> {
         self.add_glue_code().context("Failed to write glue code")?;
-        self.add_glue_manifest().context("Failed to write manifest")
+        self.add_glue_manifest(settings)
+            .context("Failed to write manifest")
     }
 
     fn add_glue_code(&self) -> AnyResult<()> {
@@ -148,7 +151,7 @@ impl GlueCrateGenerator {
         .context("Failed to write glue code file")
     }
 
-    fn add_glue_manifest(&self) -> AnyResult<()> {
+    fn add_glue_manifest(&self, settings: &GlueCompilerInvocationSettings) -> AnyResult<()> {
         let out_file = self
             .temp_dir
             .path()
@@ -156,8 +159,8 @@ impl GlueCrateGenerator {
             .tap_mut(|p| p.push("Cargo.toml"));
         let manifest_content = Self::manifest_content(
             self.package_name.as_str(),
-            self.previous_crate_name.as_str(),
-            self.next_crate_name.as_str(),
+            settings.previous_crate_name.as_str(),
+            settings.next_crate_name.as_str(),
         );
 
         fs::write(out_file, manifest_content).context("Failed to write manifest file")
@@ -168,25 +171,25 @@ impl GlueCrateGenerator {
         let mut tmp = COMMON_MANIFEST_CODE.to_owned();
 
         tmp.push_str(&format!(
-            "previous = {{ path = \"{}\", package = \"{}\" }}\n",
-            previous_crate, package_name,
+            "{} = {{ path = \"{}\", package = \"{}\" }}\n",
+            previous_crate, previous_crate, package_name,
         ));
 
         tmp.push_str(&format!(
-            "next = {{ path = \"{}\", package = \"{}\" }}\n",
-            next_crate, package_name,
+            "{} = {{ path = \"{}\", package = \"{}\" }}\n",
+            next_crate, next_crate, package_name,
         ));
 
         tmp
     }
 
-    fn generate_settings_file(&self) -> AnyResult<()> {
+    fn generate_settings_file(&self) -> AnyResult<GlueCompilerInvocationSettings> {
         let settings = GlueCompilerInvocationSettings::from_package_and_crate_names(
             self.package_name.clone(),
             self.previous_crate_name.clone(),
             self.next_crate_name.clone(),
         );
-        settings.write_to(self.temp_dir.path())
+        settings.write_to(self.temp_dir.path()).map(|()| settings)
     }
 }
 
