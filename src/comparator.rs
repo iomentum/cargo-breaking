@@ -8,9 +8,7 @@ use std::{
     hash::Hash,
 };
 
-use crate::public_api::ApiItem;
-
-use utils::{NEXT_CRATE_NAME, PREVIOUS_CRATE_NAME};
+use crate::{invocation_settings::GlueCompilerInvocationSettings, public_api::ApiItem};
 
 use semver::{BuildMetadata, Prerelease, Version};
 
@@ -118,10 +116,18 @@ pub(crate) trait Comparator {
 }
 
 impl<'tcx> ApiComparator<'tcx> {
-    pub(crate) fn from_tcx(tcx: TyCtxt<'tcx>) -> AnyResult<ApiComparator> {
+    pub(crate) fn from_tcx_and_settings(
+        tcx: TyCtxt<'tcx>,
+        settings: GlueCompilerInvocationSettings,
+    ) -> AnyResult<ApiComparator> {
         // get prev and next
-        let (prev, curr) =
-            get_previous_and_next_nums(&tcx).context("Failed to get dependencies crate id")?;
+        let (prev, curr) = get_previous_and_next_nums(
+            &tcx,
+            settings.previous_crate_name.as_str(),
+            settings.next_crate_name.as_str(),
+        )
+        .context("Failed to get dependencies crate id")?;
+
         // get public api for both
         let previous = PublicApi::from_crate(&tcx, prev.as_def_id());
         let next = PublicApi::from_crate(&tcx, curr.as_def_id());
@@ -167,11 +173,15 @@ mod comparator_tests {
     }
 }
 
-fn get_previous_and_next_nums(tcx: &TyCtxt) -> AnyResult<(CrateNum, CrateNum)> {
-    let previous_num = get_crate_num(tcx, PREVIOUS_CRATE_NAME)
-        .with_context(|| format!("Failed to get crate id for `{}`", PREVIOUS_CRATE_NAME))?;
-    let next_num = get_crate_num(tcx, NEXT_CRATE_NAME)
-        .with_context(|| format!("Failed to get crate id for `{}`", NEXT_CRATE_NAME))?;
+fn get_previous_and_next_nums(
+    tcx: &TyCtxt,
+    previous_crate_name: &str,
+    next_crate_name: &str,
+) -> AnyResult<(CrateNum, CrateNum)> {
+    let previous_num = get_crate_num(tcx, previous_crate_name)
+        .with_context(|| format!("Failed to get crate id for `{}`", previous_crate_name))?;
+    let next_num = get_crate_num(tcx, next_crate_name)
+        .with_context(|| format!("Failed to get crate id for `{}`", next_crate_name))?;
 
     Ok((previous_num, next_num))
 }

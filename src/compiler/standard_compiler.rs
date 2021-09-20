@@ -3,6 +3,8 @@ use std::mem;
 use anyhow::{anyhow, Context, Result as AnyResult};
 
 use rustc_driver::{Callbacks, RunCompiler};
+use rustc_session::config::Input;
+use rustc_span::FileName;
 
 use super::Compiler;
 
@@ -20,6 +22,9 @@ use super::Compiler;
 /// StandardCompiler::from_args
 pub(crate) struct StandardCompiler {
     args: Vec<String>,
+    /// Allows us to replace the provided code with "something else", used
+    /// during tests.
+    code: Option<String>,
 }
 
 impl StandardCompiler {
@@ -32,7 +37,17 @@ impl StandardCompiler {
 
         args.push(format!("--sysroot={}", sysroot_path));
 
-        Ok(StandardCompiler { args })
+        Ok(StandardCompiler { args, code: None })
+    }
+
+    pub(crate) fn faked(mut args: Vec<String>, code: String) -> AnyResult<StandardCompiler> {
+        let sysroot_path = Self::sysroot_path().context("Failed to get the sysroot path")?;
+        args.push(format!("--sysroot={}", sysroot_path));
+
+        Ok(StandardCompiler {
+            args,
+            code: Some(code),
+        })
     }
 }
 
@@ -52,4 +67,13 @@ impl Compiler for StandardCompiler {
     }
 }
 
-impl Callbacks for StandardCompiler {}
+impl Callbacks for StandardCompiler {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(input) = self.code.take() {
+            config.input = Input::Str {
+                name: FileName::Anon(0),
+                input,
+            }
+        }
+    }
+}

@@ -1,7 +1,11 @@
 mod git;
 pub mod glue_gen;
 
-use crate::compiler::{Compiler, InstrumentedCompiler, StandardCompiler};
+use crate::{
+    comparator::utils,
+    compiler::{Compiler, InstrumentedCompiler, StandardCompiler},
+    invocation_settings::GlueCompilerInvocationSettings,
+};
 
 use std::{env, process::Command};
 
@@ -9,7 +13,7 @@ use anyhow::{ensure, Context, Result as AnyResult};
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use semver::Version;
 
-use glue_gen::GlueCrate;
+use self::glue_gen::GlueCrate;
 
 const RUN_WITH_CARGO_ENV_VARIABLE: &str = "RUN_WITH_CARGO";
 const INITIAL_VERSION_ENV_VARIABLE: &str = "INITIAL_VERSION";
@@ -71,23 +75,31 @@ pub(crate) enum InvocationContext {
     /// The user invoked cargo-breaking by typing `cargo breaking`.
     FromCli { comparison_ref: String },
 
-    /// Cargo invoked cargo-breaking because it wants us to compile a crate.
-    ///
-    /// InvocationContext::should_build_a_depencency can be used to
-    /// disambiguate situation #2 and #3.
-    FromCargo {
+    /// Cargo invoked cargo-breaking because it wants us to compile a
+    /// dependency.
+    DepFromCargo { args: Vec<String> },
+
+    /// Cargo invoked cargo-breaking because it wants us to compile the glue
+    /// crate.
+    GlueFromCargo {
         args: Vec<String>,
-        initial_version: Version,
+        settings: GlueCompilerInvocationSettings,
     },
 }
 
 impl InvocationContext {
-    pub(crate) fn from_env() -> AnyResult<InvocationContext> {
+    pub(crate) fn from_env() -> AnyResult<Self> {
         if Self::is_run_by_cargo() {
-            Ok(Self::FromCargo {
-                args: env::args().skip(1).collect(),
-                initial_version: Self::version_from_env()?,
-            })
+            let args = env::args().skip(1).collect::<Vec<_>>();
+
+            if Self::compilation_target_is_a_dependency(args.as_slice()) {
+                Ok(Self::DepFromCargo { args })
+            } else {
+                let settings = GlueCompilerInvocationSettings::from_env()
+                    .context("Failed to load compiler invocation settings")?;
+
+                Ok(Self::GlueFromCargo { args, settings })
+            }
         } else {
             let args = App::new(crate_name!())
                 .version(crate_version!())
@@ -113,7 +125,7 @@ impl InvocationContext {
         env::var_os(RUN_WITH_CARGO_ENV_VARIABLE).is_some()
     }
 
-    pub(crate) fn should_build_a_dependency(args: &[String]) -> bool {
+    pub(crate) fn compilation_target_is_a_dependency(args: &[String]) -> bool {
         // TODO: this is not clean and not future proof, as cargo may change
         // its argument ordering at any moment.
         //

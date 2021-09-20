@@ -7,7 +7,7 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::{TyCtxt, Visibility};
 use rustc_span::def_id::DefId;
 
-use crate::glue::Change;
+use crate::compiler::Change;
 
 pub(crate) use self::{functions::FnMetadata, modules::ModMetadata};
 

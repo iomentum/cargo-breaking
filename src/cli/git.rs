@@ -13,17 +13,14 @@ pub(crate) trait GitBackend: Sized {
         let rslt = f();
 
         self.switch_back().with_context(|| {
-            format!(
-                "Failed to switch back to {}",
-                self.previous_branch().unwrap()
-            )
+            format!("Failed to switch back to {}", self.source_branch().unwrap())
         })?;
 
         Ok(rslt)
     }
 
     fn switch_to(&mut self, id: &str) -> AnyResult<()> {
-        if self.needs_stash() {
+        if self.has_uncommited_changes() {
             self.stash_push().context("Failed to stash changes")?;
         }
 
@@ -32,23 +29,23 @@ pub(crate) trait GitBackend: Sized {
             .context("Failed to get HEAD name")?
             .expect("Not currently on a branch");
 
-        self.checkout_to(id)
+        self.checkout(id)
             .with_context(|| format!("Failed to checkout to {}", id))?;
-        self.set_previous_branch(branch_name.as_str());
+        self.set_source_branch(branch_name);
 
         Ok(())
     }
 
     fn switch_back(&mut self) -> AnyResult<()> {
-        let previous_branch = self
-            .previous_branch()
+        let source_branch = self
+            .source_branch()
             .expect("Previous branch is not set")
             .to_owned();
 
-        self.checkout_to(previous_branch.as_str())
-            .with_context(|| format!("Failed to checkout to {}", previous_branch))?;
+        self.checkout(source_branch.as_str())
+            .with_context(|| format!("Failed to checkout to {}", source_branch))?;
 
-        if self.needs_stash() {
+        if self.has_uncommited_changes() {
             self.stash_pop()
                 .context("Failed to restore initial repository state")?;
         }
@@ -56,37 +53,28 @@ pub(crate) trait GitBackend: Sized {
         Ok(())
     }
 
-    fn current() -> AnyResult<Self>;
-
     fn head_name(&self) -> AnyResult<Option<String>>;
-    fn previous_branch(&self) -> Option<&str>;
-    fn set_previous_branch(&mut self, name: &str);
+    fn source_branch(&self) -> Option<&str>;
+    fn set_source_branch(&mut self, name: String);
 
-    fn needs_stash(&self) -> bool;
+    fn has_uncommited_changes(&self) -> bool;
     fn stash_push(&mut self) -> AnyResult<()>;
     fn stash_pop(&mut self) -> AnyResult<()>;
-    fn checkout_to(&mut self, id: &str) -> AnyResult<()>;
+    fn checkout(&mut self, id: &str) -> AnyResult<()>;
 }
 
+/// `CrateRepo` is the structure that contains
+/// git related information.
 pub(crate) struct CrateRepo {
+    // A git repository
     repo: Repository,
-    previous_branch_name: Option<String>,
-    needs_stash: bool,
+    // the source_branch is the branch the current user is working on,
+    // in contrast to the target branch (usually main/master), the current user will diff against.
+    source_branch: Option<String>,
+    has_uncommited_changes: bool,
 }
 
 impl GitBackend for CrateRepo {
-    fn current() -> AnyResult<CrateRepo> {
-        let repo = Repository::open_from_env().context("Failed to open repository")?;
-        let needs_stash =
-            CrateRepo::needs_stash(&repo).context("Failed to determine if stash is needed")?;
-
-        Ok(CrateRepo {
-            repo,
-            previous_branch_name: None,
-            needs_stash,
-        })
-    }
-
     fn head_name(&self) -> AnyResult<Option<String>> {
         self.repo
             .head()
@@ -94,20 +82,20 @@ impl GitBackend for CrateRepo {
             .map_err(Into::into)
     }
 
-    fn previous_branch(&self) -> Option<&str> {
-        self.previous_branch_name.as_ref().map(AsRef::as_ref)
+    fn source_branch(&self) -> Option<&str> {
+        self.source_branch.as_ref().map(AsRef::as_ref)
     }
 
-    fn set_previous_branch(&mut self, name: &str) {
+    fn set_source_branch(&mut self, name: String) {
         assert!(
-            self.previous_branch_name.is_none(),
-            "set_previous_branch is called when a previous branch is already set"
+            self.source_branch.is_none(),
+            "set_source_branch is called when a previous branch has already been set"
         );
-        self.previous_branch_name = Some(name.to_owned());
+        self.source_branch = Some(name);
     }
 
-    fn needs_stash(&self) -> bool {
-        self.needs_stash
+    fn has_uncommited_changes(&self) -> bool {
+        self.has_uncommited_changes
     }
 
     fn stash_push(&mut self) -> AnyResult<()> {
@@ -129,7 +117,7 @@ impl GitBackend for CrateRepo {
             .context("Failed to pop the stashed state")
     }
 
-    fn checkout_to(&mut self, id: &str) -> AnyResult<()> {
+    fn checkout(&mut self, id: &str) -> AnyResult<()> {
         let (obj, reference) = self
             .repo
             .revparse_ext(id)
@@ -153,15 +141,19 @@ impl GitBackend for CrateRepo {
 }
 
 impl CrateRepo {
-    fn needs_stash(repo: &Repository) -> AnyResult<bool> {
-        let mut options = StatusOptions::new();
-        let options = options.include_untracked(true);
+    pub fn new() -> AnyResult<Self> {
+        let repo = Repository::open_from_env().context("Failed to open repository")?;
 
-        let statuses = repo
-            .statuses(Some(options))
-            .context("Failed to get current repository status")?;
+        let has_uncommited_changes = !repo
+            .statuses(Some(StatusOptions::new().include_untracked(true)))
+            .context("Failed to get current repository status")?
+            .is_empty();
 
-        Ok(!statuses.is_empty())
+        Ok(Self {
+            repo,
+            source_branch: None,
+            has_uncommited_changes,
+        })
     }
 }
 
@@ -172,40 +164,36 @@ use std::{cell::RefCell, rc::Rc};
 #[allow(clippy::type_complexity)]
 struct FakeRepo<'a> {
     on_head_name: Box<dyn Fn(&FakeRepo) -> AnyResult<Option<String>> + 'a>,
-    on_previous_branch: Box<dyn for<'b> Fn(&'b FakeRepo) -> Option<&'b str> + 'a>,
-    on_set_previous_branch: Rc<dyn Fn(&mut FakeRepo<'a>, &str) + 'a>,
-    on_needs_stash: Box<dyn Fn(&FakeRepo<'a>) -> bool + 'a>,
+    on_source_branch: Box<dyn for<'b> Fn(&'b FakeRepo) -> Option<&'b str> + 'a>,
+    on_set_source_branch: Rc<dyn Fn(&mut FakeRepo<'a>, String) + 'a>,
+    on_has_uncommited_changes: Box<dyn Fn(&FakeRepo<'a>) -> bool + 'a>,
     on_stash_push: Rc<dyn Fn(&mut FakeRepo<'a>) -> AnyResult<()> + 'a>,
     on_stash_pop: Rc<dyn Fn(&mut FakeRepo<'a>) -> AnyResult<()> + 'a>,
-    on_checkout_to: Rc<dyn Fn(&mut FakeRepo<'a>, &str) -> AnyResult<()> + 'a>,
+    on_checkout: Rc<dyn Fn(&mut FakeRepo<'a>, &str) -> AnyResult<()> + 'a>,
 
     actions: RefCell<Vec<FakeRepoCall>>,
 }
 
 #[cfg(test)]
 impl<'a> GitBackend for FakeRepo<'a> {
-    fn current() -> AnyResult<Self> {
-        Ok(FakeRepo::new())
-    }
-
     fn head_name(&self) -> AnyResult<Option<String>> {
         self.add_action(FakeRepoCall::HeadName);
         (self.on_head_name)(self)
     }
 
-    fn previous_branch(&self) -> Option<&str> {
+    fn source_branch(&self) -> Option<&str> {
         self.add_action(FakeRepoCall::PreviousBranch);
-        (self.on_previous_branch)(self)
+        (self.on_source_branch)(self)
     }
 
-    fn set_previous_branch(&mut self, name: &str) {
-        self.add_action(FakeRepoCall::SetPreviousBranch(name.to_owned()));
-        self.on_set_previous_branch.clone()(self, name)
+    fn set_source_branch(&mut self, name: String) {
+        self.add_action(FakeRepoCall::SetPreviousBranch(name.clone()));
+        self.on_set_source_branch.clone()(self, name)
     }
 
-    fn needs_stash(&self) -> bool {
-        self.add_action(FakeRepoCall::NeedsStash);
-        (self.on_needs_stash)(self)
+    fn has_uncommited_changes(&self) -> bool {
+        self.add_action(FakeRepoCall::HasUncommitedChanges);
+        (self.on_has_uncommited_changes)(self)
     }
 
     fn stash_push(&mut self) -> AnyResult<()> {
@@ -218,9 +206,9 @@ impl<'a> GitBackend for FakeRepo<'a> {
         self.on_stash_pop.clone()(self)
     }
 
-    fn checkout_to(&mut self, id: &str) -> AnyResult<()> {
+    fn checkout(&mut self, id: &str) -> AnyResult<()> {
         self.add_action(FakeRepoCall::CheckoutTo(id.to_owned()));
-        self.on_checkout_to.clone()(self, id)
+        self.on_checkout.clone()(self, id)
     }
 }
 
@@ -229,14 +217,16 @@ impl<'a> FakeRepo<'a> {
     fn new() -> FakeRepo<'a> {
         FakeRepo {
             on_head_name: Box::new(|_| panic!("`on_head_name` is called but not set")),
-            on_previous_branch: Box::new(|_| panic!("`on_previous_branch` is called but not set")),
-            on_set_previous_branch: Rc::new(|_, _| {
-                panic!("`on_set_previous_branch` is called but not set")
+            on_source_branch: Box::new(|_| panic!("`on_source_branch` is called but not set")),
+            on_set_source_branch: Rc::new(|_, _| {
+                panic!("`on_set_source_branch` is called but not set")
             }),
-            on_needs_stash: Box::new(|_| panic!("`on_needs_stash` is called but not set")),
+            on_has_uncommited_changes: Box::new(|_| {
+                panic!("`on_has_uncommited_changes` is called but not set")
+            }),
             on_stash_push: Rc::new(|_| panic!("`on_stash_push` is called but not set")),
             on_stash_pop: Rc::new(|_| panic!("`on_stash_pop` is called but not set")),
-            on_checkout_to: Rc::new(|_, _| panic!("`on_checkout_to` is called but not set")),
+            on_checkout: Rc::new(|_, _| panic!("`on_checkout` is called but not set")),
 
             actions: RefCell::new(Vec::new()),
         }
@@ -250,21 +240,21 @@ impl<'a> FakeRepo<'a> {
         self
     }
 
-    fn on_previous_branch(
+    fn on_source_branch(
         mut self,
         f: impl for<'b> Fn(&'b FakeRepo) -> Option<&'b str> + 'a,
     ) -> FakeRepo<'a> {
-        self.on_previous_branch = Box::new(f);
+        self.on_source_branch = Box::new(f);
         self
     }
 
-    fn on_set_previous_branch(mut self, f: impl Fn(&mut FakeRepo<'a>, &str) + 'a) -> FakeRepo<'a> {
-        self.on_set_previous_branch = Rc::new(f);
+    fn on_set_source_branch(mut self, f: impl Fn(&mut FakeRepo<'a>, String) + 'a) -> FakeRepo<'a> {
+        self.on_set_source_branch = Rc::new(f);
         self
     }
 
-    fn on_needs_stash(mut self, f: impl Fn(&FakeRepo<'a>) -> bool + 'a) -> FakeRepo<'a> {
-        self.on_needs_stash = Box::new(f);
+    fn on_has_uncommited_changes(mut self, f: impl Fn(&FakeRepo<'a>) -> bool + 'a) -> FakeRepo<'a> {
+        self.on_has_uncommited_changes = Box::new(f);
         self
     }
 
@@ -281,11 +271,11 @@ impl<'a> FakeRepo<'a> {
         self
     }
 
-    fn on_checkout_to(
+    fn on_checkout(
         mut self,
         f: impl Fn(&mut FakeRepo<'a>, &str) -> AnyResult<()> + 'a,
     ) -> FakeRepo<'a> {
-        self.on_checkout_to = Rc::new(f);
+        self.on_checkout = Rc::new(f);
         self
     }
 
@@ -300,7 +290,7 @@ enum FakeRepoCall {
     HeadName,
     PreviousBranch,
     SetPreviousBranch(String),
-    NeedsStash,
+    HasUncommitedChanges,
     StashPush,
     StashPop,
     CheckoutTo(String),
@@ -316,16 +306,16 @@ mod tests {
         #[test]
         fn when_stash() {
             let mut repo = FakeRepo::new()
-                .on_needs_stash(|_| true)
+                .on_has_uncommited_changes(|_| true)
                 .on_stash_push(|_| Ok(()))
                 .on_head_name(|_| Ok(Some("foo".to_owned())))
-                .on_checkout_to(|_, _| Ok(()))
-                .on_set_previous_branch(|_, _| ());
+                .on_checkout(|_, _| Ok(()))
+                .on_set_source_branch(|_, _| ());
 
             repo.switch_to("bar").unwrap();
 
             let expected_calls = [
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
                 FakeRepoCall::StashPush,
                 FakeRepoCall::HeadName,
                 FakeRepoCall::CheckoutTo("bar".to_owned()),
@@ -338,15 +328,15 @@ mod tests {
         #[test]
         fn when_non_stash() {
             let mut repo = FakeRepo::new()
-                .on_needs_stash(|_| false)
+                .on_has_uncommited_changes(|_| false)
                 .on_head_name(|_| Ok(Some("bar".to_owned())))
-                .on_checkout_to(|_, _| Ok(()))
-                .on_set_previous_branch(|_, _| ());
+                .on_checkout(|_, _| Ok(()))
+                .on_set_source_branch(|_, _| ());
 
             repo.switch_to("baz").unwrap();
 
             let expected_calls = [
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
                 FakeRepoCall::HeadName,
                 FakeRepoCall::CheckoutTo("baz".to_owned()),
                 FakeRepoCall::SetPreviousBranch("bar".to_owned()),
@@ -362,9 +352,9 @@ mod tests {
         #[test]
         fn when_stash() {
             let mut repo = FakeRepo::new()
-                .on_previous_branch(|_| Some("bar"))
-                .on_checkout_to(|_, _| Ok(()))
-                .on_needs_stash(|_| true)
+                .on_source_branch(|_| Some("bar"))
+                .on_checkout(|_, _| Ok(()))
+                .on_has_uncommited_changes(|_| true)
                 .on_stash_pop(|_| Ok(()));
 
             repo.switch_back().unwrap();
@@ -372,7 +362,7 @@ mod tests {
             let expected_calls = [
                 FakeRepoCall::PreviousBranch,
                 FakeRepoCall::CheckoutTo("bar".to_owned()),
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
                 FakeRepoCall::StashPop,
             ];
 
@@ -382,16 +372,16 @@ mod tests {
         #[test]
         fn when_non_stash() {
             let mut repo = FakeRepo::new()
-                .on_previous_branch(|_| Some("bar"))
-                .on_checkout_to(|_, _| Ok(()))
-                .on_needs_stash(|_| false);
+                .on_source_branch(|_| Some("bar"))
+                .on_checkout(|_, _| Ok(()))
+                .on_has_uncommited_changes(|_| false);
 
             repo.switch_back().unwrap();
 
             let expected_calls = [
                 FakeRepoCall::PreviousBranch,
                 FakeRepoCall::CheckoutTo("bar".to_owned()),
-                FakeRepoCall::NeedsStash,
+                FakeRepoCall::HasUncommitedChanges,
             ];
 
             assert_eq!(repo.actions.borrow().as_ref(), expected_calls);

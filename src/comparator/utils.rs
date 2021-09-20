@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::{anyhow, ensure, Context, Result as AnyResult};
+use semver::Version;
 use tempfile::TempDir;
 
 use rustc_driver::{Callbacks, RunCompiler};
@@ -15,8 +16,8 @@ pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    compiler::{Compiler, InstrumentedCompiler},
-    glue::ChangeSet,
+    compiler::{Change, ChangeSet, Compiler, InstrumentedCompiler, StandardCompiler},
+    invocation_settings::GlueCompilerInvocationSettings,
 };
 
 #[macro_export]
@@ -124,15 +125,13 @@ impl<'a> CompilationUnit<'a> {
 
         let args = self.cli_args(dependencies_artifacts);
 
-        let mut compiler = DepCompiler {
-            file_name: self.crate_name.clone(),
-            code: self.code.clone(),
-        };
+        let compiler = StandardCompiler::faked(args, self.code.clone())
+            .context("Failed to create dependency compiler")?;
 
-        RunCompiler::new(args.as_slice(), &mut compiler)
+        compiler
             .run()
             .map(|()| self.artifacts_path())
-            .map_err(|_| anyhow!("Failed to compile crate"))
+            .context("Failed to run the dependency compiler")
     }
 
     fn diff(self) -> AnyResult<ChangeSet> {
@@ -152,6 +151,16 @@ impl<'a> CompilationUnit<'a> {
             .map(|(n, p)| (n.as_str(), p.as_path()));
 
         let args = self.cli_args(dependencies_artifacts);
+
+        let settings = GlueCompilerInvocationSettings::from_package_and_crate_names(
+            "glue".to_string(),
+            "previous".to_string(),
+            "next".to_string(),
+        );
+
+        settings
+            .write_to(Path::new(""))
+            .context("Failed to write invocation settings")?;
 
         InstrumentedCompiler::faked(
             "glue".to_owned(),
@@ -183,7 +192,6 @@ impl<'a> CompilationUnit<'a> {
             .current_dir(".")
             .output()
             .unwrap();
-        let sysroot = String::from_utf8(out.stdout).unwrap();
 
         mk_string_vec! {
             "rustc",
@@ -195,7 +203,6 @@ impl<'a> CompilationUnit<'a> {
             "-C", "embed-bitcode=no",
             "--out-dir", format!("{}/deps/{}.d", self.root_path.display(), self.crate_name),
             "-A", "warnings",
-            format!("--sysroot={}", sysroot.trim()),
         }
     }
 
@@ -206,6 +213,16 @@ impl<'a> CompilationUnit<'a> {
         path.push(format!("lib{}.rmeta", self.crate_name));
 
         path
+    }
+}
+
+fn test_compiler_settings() -> GlueCompilerInvocationSettings {
+    GlueCompilerInvocationSettings {
+        glue_crate_name: "glue".to_string(),
+        previous_crate_name: PREVIOUS_CRATE_NAME.to_string(),
+        next_crate_name: NEXT_CRATE_NAME.to_string(),
+        crate_version: Version::new(0, 0, 0),
+        package_name: "test".to_string(),
     }
 }
 

@@ -21,12 +21,15 @@ name = "cargo-breaking"
 anyhow = "1.0"
 git2 = "0.13"
 cargo_toml = "0.9"
-semver = "1.0"
+semver = { version = "1.0", features = ["serde"] }
 clap = "2.33"
 tap = "1.0"
 tempfile = "3.2"
 fs_extra = "1.2"
 toml = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+fake = "2.4.1"
+rand = "0.8.4"
 
 [package.metadata.rust-analyzer]
 rustc_private = true

@@ -1,7 +1,7 @@
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
-use crate::glue::Change;
+use crate::compiler::Change;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ModMetadata {
