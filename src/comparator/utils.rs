@@ -152,10 +152,6 @@ impl<'a> CompilationUnit<'a> {
             "next".to_string(),
         );
 
-        settings
-            .write_to(Path::new(""))
-            .context("Failed to write invocation settings")?;
-
         InstrumentedCompiler::faked(
             "glue".to_owned(),
             format!(
@@ -163,6 +159,7 @@ impl<'a> CompilationUnit<'a> {
                 PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
             ),
             args,
+            settings,
         )?
         .run()
     }
