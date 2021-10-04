@@ -5,7 +5,7 @@ fn private_is_not_reported() {
     let diff = compatibility_diagnosis! {
         {},
         {
-            fn fact(n: u32) -> u32 {}
+            fn fact(n: u32) -> u32 { todo!() }
         },
     };
 
@@ -17,7 +17,7 @@ fn addition() {
     let diff = compatibility_diagnosis! {
         {},
         {
-            pub fn fact(n: u32) -> u32 {}
+            pub fn fact(n: u32) -> u32 { todo!() }
         },
     };
 
@@ -70,9 +70,11 @@ fn body_change_not_detected() {
 fn fn_arg_comma_is_removed() {
     let diff = compatibility_diagnosis! {
         {
+            type t = ();
             pub fn a(a: t, b: t, c: t,) {}
         },
         {
+            type t = ();
             pub fn a(a: t, b: t, c: t) {}
         },
     };
@@ -84,9 +86,12 @@ fn fn_arg_comma_is_removed() {
 fn fn_arg_last_character_not_removed() {
     let diff = compatibility_diagnosis! {
         {
+            type t = ();
             pub fn a(a: t, b: t, c: t) {}
         },
         {
+            type t = ();
+            type u = ();
             pub fn a(a: t, b: t, c: u) {}
         },
     };

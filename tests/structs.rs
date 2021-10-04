@@ -84,11 +84,14 @@ fn new_public_field_named_is_modification() {
 fn new_private_field_named_is_not_reported() {
     let diff = compatibility_diagnosis! {
         {
+            type b = ();
             pub struct D {
                 a: b,
             }
         },
         {
+            type b = ();
+            type d = ();
             pub struct D {
                 a: b,
                 c: d,
@@ -168,7 +171,7 @@ fn generic_change_is_modification() {
             pub struct E;
         },
         {
-            pub struct E<T>;
+            pub struct E<T>(T);
         },
     };
 

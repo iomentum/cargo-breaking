@@ -4,9 +4,11 @@ use cargo_breaking::compatibility_diagnosis;
 fn addition_simple() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait A {}
             pub struct T;
         },
         {
+            pub trait A {}
             pub struct T;
 
             impl A for T {}
@@ -20,29 +22,37 @@ fn addition_simple() {
 fn modification_simple() {
     let diff = compatibility_diagnosis! {
         {
-            pub struct T;
+            pub trait T {}
+            pub struct S<T>(T);
 
-            impl<A> A for T<A> {}
+            impl<A> T for S<A> {}
         },
         {
-            pub struct T;
+            pub trait T {}
+            pub struct S<T>(T);
 
-            impl<B> A for T<B> {}
+            impl<B> T for S<B> {}
         }
     };
 
-    assert_eq!(diff.to_string(), "≠ T: A\n");
+    assert!(diff.is_empty());
 }
 
 #[test]
 fn provided_method_implementation_is_not_reported() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait T {
+                fn f() {}
+            }
             pub struct S;
 
             impl T for S {}
         },
         {
+            pub trait T {
+                fn f() {}
+            }
             pub struct S;
 
             impl T for S {
@@ -58,6 +68,9 @@ fn provided_method_implementation_is_not_reported() {
 fn constant_modification_is_modification() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait T {
+                const C: usize;
+            }
             pub struct S;
 
             impl T for S {
@@ -65,6 +78,9 @@ fn constant_modification_is_modification() {
             }
         },
         {
+            pub trait T {
+                const C: usize;
+            }
             pub struct S;
 
             impl T for S {
@@ -80,6 +96,9 @@ fn constant_modification_is_modification() {
 fn type_modification_is_modification() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait T {
+                type T;
+            }
             pub struct S;
 
             impl T for S {
@@ -87,6 +106,9 @@ fn type_modification_is_modification() {
             }
         },
         {
+            pub trait T {
+                type T;
+            }
             pub struct S;
 
             impl T for S {
@@ -102,12 +124,16 @@ fn type_modification_is_modification() {
 fn impl_trait_order_is_not_tracked() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait T1 {}
+            pub trait T2 {}
             pub struct S;
 
             impl T1 for S {}
             impl T2 for S {}
         },
         {
+            pub trait T1 {}
+            pub trait T2 {}
             pub struct S;
 
             impl T2 for S {}
@@ -122,11 +148,13 @@ fn impl_trait_order_is_not_tracked() {
 fn not_reported_when_type_is_not_public() {
     let diff = compatibility_diagnosis! {
         {
+            pub trait T {}
             struct S;
 
             impl T for S {}
         },
         {
+            pub trait T {}
             struct S;
         }
     };

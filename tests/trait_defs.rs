@@ -31,12 +31,12 @@ fn trait_item_modification() {
     let diff = compatibility_diagnosis! {
         {
             pub trait A {
-                type B = u8;
+                type B: ToString;
             }
         },
         {
             pub trait A {
-                type B = u16;
+                type B: Clone;
             }
         },
     };
