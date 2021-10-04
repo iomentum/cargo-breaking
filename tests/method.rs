@@ -79,45 +79,23 @@ fn signature_change_is_modification() {
 }
 
 #[test]
-fn generic_param_change_is_modification() {
+fn generic_param_change_is_not_reported() {
     let diff = compatibility_diagnosis! {
         {
-            pub struct A;
-            impl<T> A {
+            pub struct A<T>(T);
+            impl<T> A<T> {
                 pub fn f() {}
             }
         },
         {
-            pub struct A;
-            impl<U> A {
+            pub struct A<T>(T);
+            impl<U> A<U> {
                 pub fn f() {}
             }
         }
     };
 
-    assert_eq!(diff.to_string(), "≠ A::f\n");
-}
-
-#[test]
-fn generic_arg_change_is_modification() {
-    let diff = compatibility_diagnosis! {
-        {
-            pub struct A;
-
-            impl A<T> {
-                pub fn f() {}
-            }
-        },
-        {
-            pub struct A;
-
-            impl A<U> {
-                pub fn f() {}
-            }
-        },
-    };
-
-    assert_eq!(diff.to_string(), "≠ A::f\n");
+    assert!(diff.is_empty());
 }
 
 #[test]

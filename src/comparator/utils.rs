@@ -1,22 +1,13 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, ensure, Context, Result as AnyResult};
-use semver::Version;
+use anyhow::{ensure, Context, Result as AnyResult};
 use tempfile::TempDir;
-
-use rustc_driver::{Callbacks, RunCompiler};
-use rustc_interface::Config;
-use rustc_session::config::Input;
-use rustc_span::FileName;
 
 pub(crate) const PREVIOUS_CRATE_NAME: &str = "previous";
 pub(crate) const NEXT_CRATE_NAME: &str = "next";
 
 use crate::{
-    compiler::{Change, ChangeSet, Compiler, InstrumentedCompiler, StandardCompiler},
+    compiler::{ChangeSet, Compiler, InstrumentedCompiler, StandardCompiler},
     invocation_settings::GlueCompilerInvocationSettings,
 };
 
@@ -158,10 +149,6 @@ impl<'a> CompilationUnit<'a> {
             "next".to_string(),
         );
 
-        settings
-            .write_to(Path::new(""))
-            .context("Failed to write invocation settings")?;
-
         InstrumentedCompiler::faked(
             "glue".to_owned(),
             format!(
@@ -169,6 +156,7 @@ impl<'a> CompilationUnit<'a> {
                 PREVIOUS_CRATE_NAME, NEXT_CRATE_NAME
             ),
             args,
+            settings,
         )?
         .run()
     }
@@ -187,12 +175,6 @@ impl<'a> CompilationUnit<'a> {
     }
 
     fn common_args(&self) -> Vec<String> {
-        let out = Command::new("rustc")
-            .arg("--print=sysroot")
-            .current_dir(".")
-            .output()
-            .unwrap();
-
         mk_string_vec! {
             "rustc",
             "--crate-name", self.crate_name,
@@ -213,30 +195,5 @@ impl<'a> CompilationUnit<'a> {
         path.push(format!("lib{}.rmeta", self.crate_name));
 
         path
-    }
-}
-
-fn test_compiler_settings() -> GlueCompilerInvocationSettings {
-    GlueCompilerInvocationSettings {
-        glue_crate_name: "glue".to_string(),
-        previous_crate_name: PREVIOUS_CRATE_NAME.to_string(),
-        next_crate_name: NEXT_CRATE_NAME.to_string(),
-        crate_version: Version::new(0, 0, 0),
-        package_name: "test".to_string(),
-    }
-}
-
-struct DepCompiler {
-    file_name: String,
-    code: String,
-}
-
-impl Callbacks for DepCompiler {
-    fn config(&mut self, config: &mut Config) {
-        // Replace code with contained String
-        config.input = Input::Str {
-            name: FileName::Custom(self.file_name.clone()),
-            input: self.code.clone(),
-        }
     }
 }

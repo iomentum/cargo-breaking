@@ -23,10 +23,24 @@ pub(crate) enum InstrumentedCompiler {
         args: Vec<String>,
         file_name: String,
         code: String,
+
+        /// We don't load the settings from disk when running integration tests.
+        /// Instead, we get them from the caller.
+        ///
+        /// We can't set this in a #[cfg(test)] because it is not reachable when
+        /// running integration tests.
+        settings_override: Option<GlueCompilerInvocationSettings>,
     },
 
     /// Represents the compiler before the static analysis step.
-    Running { file_name: String, code: String },
+    Running {
+        file_name: String,
+        code: String,
+
+        /// See documentation for [`InstrumentedCompiler::Running`] for why this
+        /// field exists.
+        settings_override: Option<GlueCompilerInvocationSettings>,
+    },
 
     /// Represents the compiler after the static analysis step.
     Finished(AnyResult<ChangeSet>),
@@ -51,6 +65,7 @@ impl InstrumentedCompiler {
                 "extern crate {}; extern crate {};",
                 config.previous_crate_name, config.next_crate_name
             ),
+            settings_override: None,
         })
     }
 
@@ -58,6 +73,7 @@ impl InstrumentedCompiler {
         file_name: String,
         code: String,
         mut args: Vec<String>,
+        settings_override: GlueCompilerInvocationSettings,
     ) -> AnyResult<InstrumentedCompiler> {
         let sysroot_path = Self::sysroot_path().context("Failed to get the sysroot path")?;
 
@@ -67,6 +83,7 @@ impl InstrumentedCompiler {
             file_name,
             code,
             args,
+            settings_override: Some(settings_override),
         })
     }
 
@@ -88,6 +105,23 @@ impl InstrumentedCompiler {
             }
         }
     }
+
+    fn settings_override(&self) -> Option<&GlueCompilerInvocationSettings> {
+        let settings = match self {
+            InstrumentedCompiler::Ready {
+                settings_override, ..
+            }
+            | InstrumentedCompiler::Running {
+                settings_override, ..
+            } => settings_override,
+
+            InstrumentedCompiler::Finished(_) => {
+                panic!("`settings_override` called on a finished compiler")
+            }
+        };
+
+        settings.as_ref()
+    }
 }
 
 impl Compiler for InstrumentedCompiler {
@@ -99,6 +133,7 @@ impl Compiler for InstrumentedCompiler {
                 args,
                 file_name,
                 code,
+                settings_override,
             } => {
                 // We're moving data out of &mut self, but this is fine since
                 // we will reassign to self next.
@@ -106,8 +141,13 @@ impl Compiler for InstrumentedCompiler {
                 let args = mem::take(args);
                 let file_name = mem::take(file_name);
                 let code = mem::take(code);
+                let settings_override = mem::take(settings_override);
 
-                *self = InstrumentedCompiler::Running { file_name, code };
+                *self = InstrumentedCompiler::Running {
+                    file_name,
+                    code,
+                    settings_override,
+                };
                 args
             }
 
@@ -151,7 +191,13 @@ impl Callbacks for InstrumentedCompiler {
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
-        let settings = match GlueCompilerInvocationSettings::from_env() {
+        let settings = self
+            .settings_override()
+            .cloned()
+            .map(Result::Ok)
+            .unwrap_or_else(GlueCompilerInvocationSettings::from_env);
+
+        let settings = match settings {
             Ok(settings) => settings,
             Err(e) => {
                 *self = InstrumentedCompiler::Finished(Err(e));
