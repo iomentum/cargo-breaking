@@ -87,14 +87,14 @@ impl ApiItem {
     pub(crate) fn path(&self) -> &str {
         match self {
             ApiItem::Fn(f) => f.path(),
-            ApiItem::Mod(_) => todo!(),
+            ApiItem::Mod(m) => m.path(),
         }
     }
 
     pub(crate) fn kind(&self) -> ApiItemKind {
         match self {
             ApiItem::Fn(_) => ApiItemKind::Fn,
-            ApiItem::Mod(_) => todo!(),
+            ApiItem::Mod(_) => ApiItemKind::Mod,
         }
     }
 
@@ -135,4 +135,5 @@ impl From<FnMetadata> for ApiItem {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ApiItemKind {
     Fn,
+    Mod,
 }
