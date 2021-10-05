@@ -207,8 +207,8 @@ impl Callbacks for InstrumentedCompiler {
 
         // get prev & next
         let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
-            let comparator = ApiComparator::from_tcx_and_settings(tcx, settings)?;
-            get_changeset(comparator)
+            let comparator = ApiComparator::from_tcx_and_settings(&tcx, settings)?;
+            get_changeset(&comparator)
         });
 
         *self = InstrumentedCompiler::Finished(changeset);
@@ -220,13 +220,18 @@ impl Callbacks for InstrumentedCompiler {
 
 // --------------------------------------------------------
 
+#[derive(Debug)]
 pub struct ChangeSet {
-    changes: Vec<Change>,
+    changes: Vec<ExposedChange>,
 }
 
 impl ChangeSet {
     pub(crate) fn from_diffs(d: Vec<Diff>) -> Self {
-        let mut changes: Vec<Change> = d.into_iter().filter_map(Change::from_diff).collect();
+        let mut changes = d
+            .into_iter()
+            .filter_map(Change::from_diff)
+            .map(ExposedChange::from_change)
+            .collect::<Vec<_>>();
 
         changes.sort();
 
@@ -255,14 +260,35 @@ mod change_set_tests {
     }
 }
 
-#[derive(Debug, Eq)]
-pub(crate) enum Change {
-    Breaking(Diff),
-    NonBreaking(Diff),
+/// A simple, lifetime-less version of
+/// [`Change`][Change].
+///
+/// It contains less information compared to [`Change`], but does not use anything
+/// from the compiler typed context, making easily returnable from functions.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum ExposedChange {
+    Breaking(ExposedDiff),
+    NonBreaking(ExposedDiff),
 }
 
-impl Ord for Change {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+impl ExposedChange {
+    fn from_change(change: Change<'_>) -> Self {
+        match change {
+            Change::Breaking(diff) => ExposedChange::Breaking(ExposedDiff::from_diff(diff)),
+            Change::NonBreaking(diff) => ExposedChange::NonBreaking(ExposedDiff::from_diff(diff)),
+        }
+    }
+
+    fn diff(&self) -> &ExposedDiff {
+        match self {
+            ExposedChange::Breaking(change) => change,
+            ExposedChange::NonBreaking(change) => change,
+        }
+    }
+}
+
+impl Ord for ExposedChange {
+    fn cmp(&self, other: &Self) -> Ordering {
         match (&self, &other) {
             (&Self::Breaking(_), &Self::NonBreaking(_)) => Ordering::Less,
             (&Self::NonBreaking(_), &Self::Breaking(_)) => Ordering::Greater,
@@ -272,26 +298,116 @@ impl Ord for Change {
     }
 }
 
-impl PartialOrd for Change {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl PartialOrd for ExposedChange {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Change {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-impl Display for Change {
+impl Display for ExposedChange {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.diff().fmt(f)
     }
 }
 
-impl Change {
-    pub(crate) fn from_diff(d: Diff) -> Option<Change> {
+/// A simple, lifetime-less version of [`Diff`].
+///
+/// See the documentation for [`ExposedChange`] for why this is needed.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum ExposedDiff {
+    Addition(String),
+    Edition(String),
+    Deletion(String),
+}
+
+impl ExposedDiff {
+    fn kind_and_path(&self) -> (DiffKind, &str) {
+        let (kind, raw_path) = match self {
+            ExposedDiff::Addition(path) => (DiffKind::Addition, path),
+            ExposedDiff::Edition(path) => (DiffKind::Edition, path),
+            ExposedDiff::Deletion(item) => (DiffKind::Deletion, item),
+        };
+
+        let displayed_path = Self::strip_double_colon(raw_path);
+        (kind, displayed_path)
+    }
+
+    fn from_diff(diff: Diff) -> ExposedDiff {
+        // TODO: we could remove clones here if we make a ApiItem -> String
+        // function somewhere.
+
+        match diff {
+            Diff::Addition(item) => ExposedDiff::Addition(item.path().to_string()),
+
+            Diff::Edition(previous, next) => {
+                // The two paths should be equal, let's ensure that in debug
+                // mode.
+                debug_assert_eq!(previous.path(), next.path());
+                ExposedDiff::Edition(next.path().to_string())
+            }
+
+            Diff::Deletion(item) => ExposedDiff::Deletion(item.path().to_string()),
+        }
+    }
+
+    fn strip_double_colon(raw_path: &str) -> &str {
+        // Paths emitted by rustc always start with `::`. We want to remove it,
+        // but let's assume we're right first.
+        debug_assert!(raw_path.starts_with("::"));
+        &raw_path[2..]
+    }
+}
+
+impl Display for ExposedDiff {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let (kind, path) = self.kind_and_path();
+        write!(f, "{} {}", kind, path)
+    }
+}
+
+impl Ord for ExposedDiff {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let (left_kind, left_path) = self.kind_and_path();
+        let (right_kind, right_path) = other.kind_and_path();
+
+        left_kind
+            .cmp(&right_kind)
+            .then_with(|| left_path.cmp(right_path))
+    }
+}
+
+impl PartialOrd for ExposedDiff {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum DiffKind {
+    Deletion,
+    Edition,
+    Addition,
+}
+
+impl Display for DiffKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DiffKind::Deletion => '-',
+            DiffKind::Edition => '≠',
+            DiffKind::Addition => '+',
+        }
+        .fmt(f)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum Change<'tcx> {
+    Breaking(Diff<'tcx>),
+    NonBreaking(Diff<'tcx>),
+}
+
+impl<'tcx> Change<'tcx> {
+    pub(crate) fn from_diff(d: Diff<'tcx>) -> Option<Change<'tcx>> {
         // TODO [sasha]: there's some polymorphism here to perform
         // to figure out if a change is breaking
 
@@ -320,7 +436,9 @@ impl Change {
     }
 }
 
-fn get_changeset(comparator: impl Comparator) -> AnyResult<ChangeSet> {
+fn get_changeset<'tcx, 'rustc>(
+    comparator: &'rustc impl Comparator<'tcx, 'rustc>,
+) -> AnyResult<ChangeSet> {
     // get additions / editions / deletions
     let diffs: Vec<Diff> = comparator.get_diffs();
 

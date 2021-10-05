@@ -19,7 +19,7 @@ impl ModMetadata {
         self.path.as_str()
     }
 
-    pub(crate) fn changes_between(prev: ModMetadata, next: ModMetadata) -> Option<Change> {
+    pub(crate) fn changes_between<'a>(prev: ModMetadata, next: ModMetadata) -> Option<Change<'a>> {
         // A public module has no other properties than *existing*, so there's
         // no possible change to emit.
         None
