@@ -75,7 +75,7 @@ impl Diff {
     }
 
     fn kind_and_path(&self) -> (DiffKind, &str) {
-        match self {
+        let (kind, raw_path) = match self {
             Diff::Addition(item) => (DiffKind::Addition, item.path()),
 
             Diff::Edition(prev, next) => {
@@ -89,7 +89,18 @@ impl Diff {
             }
 
             Diff::Deletion(item) => (DiffKind::Deletion, item.path()),
-        }
+        };
+
+        let printable_path = Self::strip_double_colon(raw_path);
+        (kind, printable_path)
+    }
+
+    fn strip_double_colon(path: &str) -> &str {
+        // The paths always starts with `::`. Let's ensure it's the case
+        // and remove them.
+        debug_assert!(path.starts_with("::"));
+
+        &path[2..]
     }
 }
 
