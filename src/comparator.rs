@@ -19,19 +19,18 @@ use rustc_span::def_id::CrateNum;
 use crate::{diagnosis::DiagnosisItem, public_api::PublicApi};
 
 pub struct ApiComparator<'tcx> {
-    previous: PublicApi,
-    next: PublicApi,
-    tcx: TyCtxt<'tcx>,
+    previous: PublicApi<'tcx>,
+    next: PublicApi<'tcx>,
 }
 
 #[derive(Debug, Eq)]
-pub(crate) enum Diff {
-    Addition(ApiItem),
-    Edition(ApiItem, ApiItem),
-    Deletion(ApiItem),
+pub(crate) enum Diff<'tcx> {
+    Addition(ApiItem<'tcx>),
+    Edition(ApiItem<'tcx>, ApiItem<'tcx>),
+    Deletion(ApiItem<'tcx>),
 }
 
-impl Ord for Diff {
+impl Ord for Diff<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let (left_kind, left_path) = self.kind_and_path();
         let (right_kind, right_path) = other.kind_and_path();
@@ -42,29 +41,29 @@ impl Ord for Diff {
     }
 }
 
-impl PartialOrd for Diff {
+impl PartialOrd for Diff<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Diff {
+impl PartialEq for Diff<'_> {
     fn eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
-impl Display for Diff {
+impl Display for Diff<'_> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let (kind, path) = self.kind_and_path();
         write!(f, "{} {}", kind, path)
     }
 }
 
-impl Diff {
+impl<'tcx> Diff<'tcx> {
     pub fn from_path_and_changes(
         path: String,
-        changes: (Option<ApiItem>, Option<ApiItem>),
+        changes: (Option<ApiItem<'tcx>>, Option<ApiItem<'tcx>>),
     ) -> Self {
         match (changes.0, changes.1) {
             (None, Some(c)) => Self::Addition(c),
@@ -122,17 +121,20 @@ impl Display for DiffKind {
     }
 }
 
-pub(crate) trait Comparator {
-    fn get_diffs(self) -> Vec<Diff>;
+pub(crate) trait Comparator<'tcx, 'rustc> {
+    fn get_diffs(&'rustc self) -> Vec<Diff<'tcx>>;
 }
 
 impl<'tcx> ApiComparator<'tcx> {
-    pub(crate) fn from_tcx_and_settings(
-        tcx: TyCtxt<'tcx>,
+    pub(crate) fn from_tcx_and_settings<'rustc>(
+        tcx: &'rustc TyCtxt<'tcx>,
         settings: GlueCompilerInvocationSettings,
-    ) -> AnyResult<ApiComparator> {
+    ) -> AnyResult<ApiComparator<'tcx>>
+    where
+        'tcx: 'rustc,
+    {
         // get prev and next
-        let (prev, curr) = get_previous_and_next_nums(
+        let (prev, next) = get_previous_and_next_nums(
             &tcx,
             settings.previous_crate_name.as_str(),
             settings.next_crate_name.as_str(),
@@ -140,33 +142,34 @@ impl<'tcx> ApiComparator<'tcx> {
         .context("Failed to get dependencies crate id")?;
 
         // get public api for both
-        let previous = PublicApi::from_crate(&tcx, prev.as_def_id());
-        let next = PublicApi::from_crate(&tcx, curr.as_def_id());
+        let previous = PublicApi::from_crate(tcx, prev.as_def_id());
+        let next = PublicApi::from_crate(tcx, next.as_def_id());
         // new comparator(prev, next)
-        Ok(ApiComparator {
-            previous,
-            next,
-            tcx,
-        })
+        Ok(ApiComparator { previous, next })
     }
 
-    fn get_paths_and_api_changes(self) -> HashMap<String, (Option<ApiItem>, Option<ApiItem>)> {
+    fn get_paths_and_api_changes(
+        &self,
+    ) -> HashMap<String, (Option<ApiItem<'tcx>>, Option<ApiItem<'tcx>>)> {
         let mut paths_and_api_changes = self
             .previous
             .items()
             .into_iter()
-            .map(|(key, value)| (key, (Some(value), None)))
+            .map(|(key, value)| (key.to_string(), (Some(value.clone()), None)))
             .collect::<HashMap<String, (Option<ApiItem>, Option<ApiItem>)>>();
         for (key, value) in self.next.items().into_iter() {
-            let mut entry = paths_and_api_changes.entry(key).or_insert((None, None));
-            entry.1 = Some(value);
+            let mut entry = paths_and_api_changes
+                .entry(key.to_string())
+                .or_insert((None, None));
+
+            entry.1 = Some(value.clone());
         }
         paths_and_api_changes
     }
 }
 
-impl<'tcx> Comparator for ApiComparator<'tcx> {
-    fn get_diffs(self) -> Vec<Diff> {
+impl<'tcx, 'rustc> Comparator<'tcx, 'rustc> for ApiComparator<'tcx> {
+    fn get_diffs(&'rustc self) -> Vec<Diff<'tcx>> {
         let paths_and_api_changes = self.get_paths_and_api_changes();
         paths_and_api_changes
             .into_iter()

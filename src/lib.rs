@@ -19,8 +19,8 @@ mod public_api;
 
 use anyhow::{Context, Result as AnyResult};
 use cli::{BuildEnvironment, InvocationContext};
-use comparator::utils;
 pub use comparator::ApiCompatibilityDiagnostics;
+use comparator::{utils, ApiComparator};
 use compiler::ChangeSet;
 use manifest::Manifest;
 

@@ -91,7 +91,7 @@ fn fn_arg_last_character_not_removed() {
         },
         {
             type t = ();
-            type u = ();
+            type u = u8;
             pub fn a(a: t, b: t, c: u) {}
         },
     };
