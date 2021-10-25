@@ -12,8 +12,8 @@ use crate::{invocation_settings::GlueCompilerInvocationSettings, public_api::Api
 
 use semver::{BuildMetadata, Prerelease, Version};
 
-use rustc_middle::middle::cstore::ExternCrateSource;
 use rustc_middle::ty::TyCtxt;
+use rustc_session::cstore::ExternCrateSource;
 use rustc_span::def_id::CrateNum;
 
 use crate::{diagnosis::DiagnosisItem, public_api::PublicApi};

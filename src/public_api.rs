@@ -1,5 +1,6 @@
 mod functions;
 mod modules;
+mod utils;
 
 use std::{cmp::Ordering, collections::HashMap};
 
@@ -108,11 +109,12 @@ impl<'tcx> ApiItem<'tcx> {
     }
 
     pub(crate) fn changes_between(
+        tcx: &TyCtxt,
         prev: ApiItem<'tcx>,
         next: ApiItem<'tcx>,
     ) -> Option<Change<'tcx>> {
         match (prev, next) {
-            (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::changes_between(prev, next),
+            (ApiItem::Fn(prev), ApiItem::Fn(next)) => FnMetadata::changes_between(tcx, prev, next),
             (ApiItem::Mod(prev), ApiItem::Mod(next)) => ModMetadata::changes_between(prev, next),
 
             _ => unreachable!("Attempt to generate changes for two different-kinded types"),

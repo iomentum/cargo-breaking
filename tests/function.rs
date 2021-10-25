@@ -100,7 +100,7 @@ fn fn_arg_last_character_not_removed() {
 }
 
 #[test]
-fn user_defined_type_change_is_modification() {
+fn user_defined_type_change_is_not_reported() {
     let diff = compatibility_diagnosis! {
         {
             pub struct S;
