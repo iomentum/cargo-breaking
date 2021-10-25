@@ -100,6 +100,22 @@ fn fn_arg_last_character_not_removed() {
 }
 
 #[test]
+fn user_defined_type_change_is_not_reported() {
+    let diff = compatibility_diagnosis! {
+        {
+            pub struct S;
+            pub fn f(_: S) {}
+        },
+        {
+            pub struct S;
+            pub fn f(_: S) {}
+        },
+    };
+
+    assert!(diff.is_empty());
+}
+
+#[test]
 fn empty_struct_kind_change_is_modification() {
     let files = ["pub struct A;", "pub struct A();", "pub struct A {}"];
 

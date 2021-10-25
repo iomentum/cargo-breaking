@@ -7,6 +7,7 @@ use crate::{
 use anyhow::{anyhow, Context, Result as AnyResult};
 use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_interface::Config;
+use rustc_middle::ty::TyCtxt;
 use rustc_session::config::Input;
 use rustc_span::FileName;
 use std::{
@@ -208,7 +209,7 @@ impl Callbacks for InstrumentedCompiler {
         // get prev & next
         let changeset = queries.global_ctxt().unwrap().take().enter(|tcx| {
             let comparator = ApiComparator::from_tcx_and_settings(&tcx, settings)?;
-            get_changeset(&comparator)
+            get_changeset(&tcx, &comparator)
         });
 
         *self = InstrumentedCompiler::Finished(changeset);
@@ -226,10 +227,10 @@ pub struct ChangeSet {
 }
 
 impl ChangeSet {
-    pub(crate) fn from_diffs(d: Vec<Diff>) -> Self {
+    pub(crate) fn from_diffs(tcx: &TyCtxt, d: Vec<Diff>) -> Self {
         let mut changes = d
             .into_iter()
-            .filter_map(Change::from_diff)
+            .filter_map(|diff| Change::from_diff(tcx, diff))
             .map(ExposedChange::from_change)
             .collect::<Vec<_>>();
 
@@ -407,7 +408,7 @@ pub(crate) enum Change<'tcx> {
 }
 
 impl<'tcx> Change<'tcx> {
-    pub(crate) fn from_diff(d: Diff<'tcx>) -> Option<Change<'tcx>> {
+    pub(crate) fn from_diff(tcx: &TyCtxt, d: Diff<'tcx>) -> Option<Change<'tcx>> {
         // TODO [sasha]: there's some polymorphism here to perform
         // to figure out if a change is breaking
 
@@ -421,7 +422,7 @@ impl<'tcx> Change<'tcx> {
                 Some(Change::Breaking(d))
             }
 
-            Diff::Edition(prev, next) => ApiItem::changes_between(prev, next),
+            Diff::Edition(prev, next) => ApiItem::changes_between(tcx, prev, next),
 
             // Removing anything that is publicly exposed is always breaking.
             Diff::Deletion(_) => Some(Change::Breaking(d)),
@@ -437,10 +438,11 @@ impl<'tcx> Change<'tcx> {
 }
 
 fn get_changeset<'tcx, 'rustc>(
+    tcx: &TyCtxt,
     comparator: &'rustc impl Comparator<'tcx, 'rustc>,
 ) -> AnyResult<ChangeSet> {
     // get additions / editions / deletions
     let diffs: Vec<Diff> = comparator.get_diffs();
 
-    Ok(ChangeSet::from_diffs(diffs))
+    Ok(ChangeSet::from_diffs(tcx, diffs))
 }
