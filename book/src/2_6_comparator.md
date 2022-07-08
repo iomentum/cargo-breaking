@@ -1,3 +1,0 @@
-# Comparator
-
-WORK IN PROGRESS

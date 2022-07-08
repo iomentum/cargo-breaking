@@ -1,3 +1,3 @@
 # Process
 
-This section describes the flow of the cargo-breaking application.
+This section describes the execution flow of cargo-breaking.
