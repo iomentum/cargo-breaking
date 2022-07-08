@@ -1,12 +1,11 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::tests::get_diff;
 
 #[test]
 fn private_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
-            fn fact(n: u32) -> u32 {}
+            fn fact(n: u32) -> u32 { todo!() }
         },
     };
 
@@ -15,19 +14,19 @@ fn private_is_not_reported() {
 
 #[test]
 fn addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
-            pub fn fact(n: u32) -> u32 {}
+            pub fn fact(n: u32) -> u32 { todo!() }
         },
     };
 
-    assert_eq!(diff.to_string(), "+ fact\n");
+    assert_eq!(diff.to_string(), "+ fact (function)\n");
 }
 
 #[test]
 fn new_arg() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub fn fact() {}
         },
@@ -36,12 +35,12 @@ fn new_arg() {
         }
     };
 
-    assert_eq!(diff.to_string(), "≠ fact\n");
+    assert_eq!(diff.to_string(), "≠ fact (function)\n");
 }
 
 #[test]
 fn generic_order() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub fn f<T, E>() {}
         },
@@ -50,12 +49,12 @@ fn generic_order() {
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ f\n");
+    assert_eq!(diff.to_string(), "≠ f (function)\n");
 }
 
 #[test]
 fn body_change_not_detected() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub fn fact() {}
         },
@@ -68,68 +67,54 @@ fn body_change_not_detected() {
 }
 
 #[test]
-fn fn_arg_comma_is_removed() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
-        {
-            pub fn a(a: t, b: t, c: t,) {}
-        },
-        {
-            pub fn a(a: t, b: t, c: t) {}
-        },
-    };
-
-    assert!(diff.is_empty());
-}
-
-#[test]
 fn fn_arg_last_character_not_removed() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
-            pub fn a(a: t, b: t, c: t) {}
+            pub fn a(a: u8, b: u8, c: u8) {}
         },
         {
-            pub fn a(a: t, b: t, c: u) {}
+            pub fn a(a: u8, b: u8, c: u16) {}
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ a\n");
-}
-
-#[test]
-fn empty_struct_kind_change_is_modification() {
-    let files = ["pub struct A;", "pub struct A();", "pub struct A {}"];
-
-    for (id_a, file_a) in files.iter().enumerate() {
-        for (id_b, file_b) in files.iter().enumerate() {
-            let comparator = cargo_breaking::compare(file_a, file_b).unwrap();
-            let diff = comparator.run();
-
-            if id_a != id_b {
-                assert_eq!(diff.to_string(), "≠ A\n");
-            } else {
-                assert!(diff.is_empty());
-            }
-        }
-    }
+    assert_eq!(diff.to_string(), "≠ a (function)\n");
 }
 
 #[test]
 fn is_reported_lexicographically() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
             pub fn a() {}
             pub fn z() {}
         }
     };
-    assert_eq!(diff.to_string(), "+ a\n+ z\n");
+    assert_eq!(diff.to_string(), "+ a (function)\n+ z (function)\n");
 
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
             pub fn z() {}
             pub fn a() {}
         }
     };
-    assert_eq!(diff.to_string(), "+ a\n+ z\n");
+    assert_eq!(diff.to_string(), "+ a (function)\n+ z (function)\n");
+}
+
+#[test]
+fn custom_type_equality() {
+    let diff = get_diff! {
+        {
+            pub struct A { pub a: u8 }
+
+            pub fn test(a: A) {}
+        },
+        {
+            pub struct A { pub a: u16 }
+
+            pub fn test(a: A) {}
+        },
+    };
+
+    assert_eq!(diff.to_string(), "≠ A::a (struct field)\n");
 }

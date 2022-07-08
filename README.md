@@ -1,10 +1,17 @@
 # `cargo-breaking`
 
 <div style="text-align: center;" align="center">
-<img src="https://raw.githubusercontent.com/iomentum/cargo-breaking/main/logo-full.svg" width="500" />
-<br/>
+  <p>
+    <a href="https://github.com/iomentum/cargo-breaking/actions/workflows/main.yml"><img src="https://github.com/iomentum/cargo-breaking/actions/workflows/main.yml/badge.svg" alt="build status" /></a>
+    <a href="https://crates.io/crates/cargo-breaking"><img src="https://img.shields.io/crates/v/cargo-breaking.svg?style=flat-square" alt="crates.io version" /></a>
+    <a href="https://crates.io/crates/cargo-breaking"><img src="https://img.shields.io/crates/d/cargo-breaking.svg?style=flat-square" alt="download count" /></a>
+  </p>
+  
+  <img src="https://raw.githubusercontent.com/iomentum/cargo-breaking/main/logo-full.svg" width="500" /><br/>
+  <small>Logo is provided by Morgane Gaillard (<a href="https://github.com/Arlune">@Arlune</a>) under the MPL license.</small>
+  <br/>
 
-Logo is provided by Morgane Gaillard (<a href="https://github.com/Arlune">@Arlune</a>) under the MPL license.
+  
 </div>
 
 
@@ -14,33 +21,33 @@ shows what changed, and suggests the next version according to [semver][semver].
 ## Example
 
 Suppose you're building a crate that, for any reason, deals with users. The
-crate version is 2.4.3. You remove the `User::from_str` method, add a new public
-field to `User`, implement `Debug` for it and add the `User::from_path`
-function.
+crate version is 2.4.3. You remove the `User::from_str` method, change the type of
+a public field, implement `Debug` for it, add the `User::from_path`
+function, and deprecate the `User::from_foo` function.
 
 When invoked, the following text should be printed:
 
 ```none
 $ cargo breaking
-- user::User::from_str
-≠ user::User
-+ user::User::from_path
-+ user::User: Debug
+- user::User::from_str (method)
+≠ user::User::some_field (struct field)
++ user::User::from_path (method)
++ user::User::[impl Debug] (impl)
+⚠ user::User::from_foo (method)
 
 Next version is: 3.0.0
 ```
 
 ### Args
 
-`against`, an arg to specify the github ref (a tag, a branch name or a commit) against which we can compare our current crate version.
-
-- use:
-
-```none
-cargo breaking -a branch_name
-```
-
-- default: "main"
+| Argument                | Description                                                  | Example                   |
+|-------------------------|--------------------------------------------------------------|---------------------------|
+| `--against` / `-a`      | The Git reference of the source code to be compared against. | `-a develop/foo-feature`  |
+| `--verbose` / `-v`      | Logging level: Off, Error, Warn, Info, Debug, Trace.         | `-vvv` (Info level)       |
+| `--quiet` / `-q`        | Hide build output except on failure.                         |                           |
+| `--features` / `-F`     | Space-separated list of features to activate.                | `-F alt_impls win32 json` |
+| `--all-features`        | Activate all available features.                             |                           |
+| `--no-default-features` | Don't activate the `default` feature.                        |                           |
 
 ## Goals and non goals
 
@@ -54,7 +61,7 @@ to ignore the most subtle ones. This includes, but is not limited to:
 ## Status
 
 By default, `cargo-breaking` compares the public API of the crate against what
-is exposed in the `main` branch. This can be changed with the `--against`
+is exposed the `main` branch. This can be changed with the `--against`
 (abbreviated by `-a`) parameter. The value can be a branch name, a tag name, or
 a commit SHA-1.
 
@@ -63,7 +70,8 @@ It currently detects the following:
 - functions,
 - struct fields and generic parameters,
 - enum variants, fields and generic parameters,
-- methods when the implemented type is simple enough.
+- implementations, including methods and associated items,
+- trait definitions.
 
 As we compare parts of the crate AST, it reports a lot of false positives:
 

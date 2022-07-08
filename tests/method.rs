@@ -1,9 +1,8 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::tests::get_diff;
 
 #[test]
 fn new_public_method_is_addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub struct A;
         },
@@ -16,12 +15,12 @@ fn new_public_method_is_addition() {
         },
     };
 
-    assert_eq!(diff.to_string(), "+ A::a\n");
+    assert_eq!(diff.to_string(), "+ A::a (method)\n");
 }
 
 #[test]
 fn new_private_method_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub struct A;
         },
@@ -39,7 +38,7 @@ fn new_private_method_is_not_reported() {
 
 #[test]
 fn method_removal_is_removal() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub struct A;
 
@@ -54,12 +53,12 @@ fn method_removal_is_removal() {
         }
     };
 
-    assert_eq!(diff.to_string(), "- A::a\n");
+    assert_eq!(diff.to_string(), "- A::a (method)\n");
 }
 
 #[test]
 fn signature_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub struct A;
 
@@ -76,12 +75,12 @@ fn signature_change_is_modification() {
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ A::f\n");
+    assert_eq!(diff.to_string(), "≠ A::f (method)\n");
 }
 
 #[test]
-fn generic_param_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+fn generic_param_change_is_not_modification() {
+    let diff = get_diff! {
         {
             pub struct A;
             impl<T> A {
@@ -96,34 +95,41 @@ fn generic_param_change_is_modification() {
         }
     };
 
-    assert_eq!(diff.to_string(), "≠ A::f\n");
+    assert!(diff.is_empty());
 }
 
 #[test]
 fn generic_arg_change_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
-            pub struct A;
+            pub struct A<T> {
+                t: T,
+            }
 
-            impl A<T> {
+            impl A<u8> {
                 pub fn f() {}
             }
         },
         {
-            pub struct A;
+            pub struct A<T> {
+                t: T,
+            }
 
-            impl A<U> {
+            impl A<u16> {
                 pub fn f() {}
             }
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ A::f\n");
+    assert_eq!(
+        diff.to_string(),
+        "- A::<u8>::f (method)\n+ A::<u16>::f (method)\n"
+    );
 }
 
 #[test]
 fn not_reported_when_type_is_not_public() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             struct A;
 
@@ -143,7 +149,7 @@ fn not_reported_when_type_is_not_public() {
 
 #[test]
 fn is_reported_in_type_definition_path_1() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub mod foo {
                 pub struct Bar;
@@ -160,12 +166,12 @@ fn is_reported_in_type_definition_path_1() {
         },
     };
 
-    assert_eq!(diff.to_string(), "- foo::Bar::f\n");
+    assert_eq!(diff.to_string(), "- foo::Bar::f (method)\n");
 }
 
 #[test]
 fn is_reported_in_type_definition_path_2() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub mod foo {
                 pub struct Bar;
@@ -184,5 +190,5 @@ fn is_reported_in_type_definition_path_2() {
         }
     };
 
-    assert_eq!(diff.to_string(), "- foo::Bar::f\n");
+    assert_eq!(diff.to_string(), "- baz (module)\n- foo::Bar::f (method)\n");
 }
