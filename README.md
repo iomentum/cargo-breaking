@@ -10,10 +10,7 @@
   <img src="https://raw.githubusercontent.com/iomentum/cargo-breaking/main/logo-full.svg" width="500" /><br/>
   <small>Logo is provided by Morgane Gaillard (<a href="https://github.com/Arlune">@Arlune</a>) under the MPL license.</small>
   <br/>
-
-  
 </div>
-
 
 `cargo-breaking` compares a crate's public API between two different branches,
 shows what changed, and suggests the next version according to [semver][semver].
@@ -73,20 +70,13 @@ It currently detects the following:
 - implementations, including methods and associated items,
 - trait definitions.
 
-As we compare parts of the crate AST, it reports a lot of false positives:
-
-- renaming an argument is reported as a breaking change,
-- renaming a generic type is reported as a breaking change,
-- adding a generic type with a default value is a breaking change,
-- depending on the situation, adding a trailing comma may be a breaking change.
-
 [semver]: https://semver.org/
 [add-field-pg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=492a1727404d1f8d199962c639454f44
 [ania]: https://docs.rs/static_assertions/1.1.0/static_assertions/macro.assert_not_impl_any.html
 
 ## Contribution
 
-A book is maintained to help understanding how the crate works, and what are its inner parts and their behaviour.
+A book is maintained to help understand how the crate works, and what are its inner parts and their behaviour.
 
 It can be found here :
 [book](https://iomentum.github.io/cargo-breaking/)
