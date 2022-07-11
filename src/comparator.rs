@@ -68,6 +68,13 @@ impl Display for ApiCompatibilityDiagnostics {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DiagnosticVersionChange {
+    Major,
+    Minor,
+    Patch,
+}
+
 impl ApiCompatibilityDiagnostics {
     pub fn is_empty(&self) -> bool {
         self.diags.is_empty()
@@ -129,6 +136,16 @@ impl ApiCompatibilityDiagnostics {
 
     fn next_patch(v: &mut Version) {
         v.patch += 1;
+    }
+
+    pub fn get_version_change(&self) -> DiagnosticVersionChange {
+        if self.contains_breaking_changes() {
+            DiagnosticVersionChange::Major
+        } else if self.contains_additions() {
+            DiagnosticVersionChange::Minor
+        } else {
+            DiagnosticVersionChange::Patch
+        }
     }
 }
 

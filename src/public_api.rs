@@ -69,17 +69,17 @@ impl PublicApi {
         let kind = match &item.inner {
             ItemEnum::Function(f) => ItemKindData::Fn(f.to_cb(data)),
             ItemEnum::Struct(s) => {
-                Self::process_fields(data, res, path, &s.fields)?;
+                Self::process_fields(data, res, path, &s.fields, s.fields_stripped)?;
                 Self::process_impls(data, res, path, &s.impls)?;
                 ItemKindData::Type(s.to_cb(data))
             }
             ItemEnum::Union(u) => {
-                Self::process_fields(data, res, path, &u.fields)?;
+                Self::process_fields(data, res, path, &u.fields, u.fields_stripped)?;
                 Self::process_impls(data, res, path, &u.impls)?;
                 ItemKindData::Type(u.to_cb(data))
             }
             ItemEnum::Enum(e) => {
-                Self::process_variants(data, res, path, &e.variants)?;
+                Self::process_variants(data, res, path, &e.variants, e.variants_stripped)?;
                 Self::process_impls(data, res, path, &e.impls)?;
                 ItemKindData::Type(e.to_cb(data))
             }
@@ -231,6 +231,7 @@ impl PublicApi {
         res: &mut Vec<(ItemPath, ItemKind)>,
         path: &ItemPath,
         variants: &[Id],
+        parent_stripped: bool,
     ) -> AnyResult<()> {
         for v in variants {
             let var_data = Self::find_item(data, v)?;
@@ -253,13 +254,14 @@ impl PublicApi {
                                     data: ItemKindData::Field(TypeFieldMetadata::new(
                                         i.to_string(),
                                         field.to_cb(data),
+                                        parent_stripped,
                                     )),
                                 },
                             ));
                         }
                     }
                     Variant::Struct(f) => {
-                        Self::process_fields(data, res, &new_path, f)?;
+                        Self::process_fields(data, res, &new_path, f, parent_stripped)?;
                     }
                 },
                 _ => bail!("Unexpected item type in enum: {:?}", var_data.inner),
@@ -278,6 +280,7 @@ impl PublicApi {
         res: &mut Vec<(ItemPath, ItemKind)>,
         path: &ItemPath,
         fields: &[Id],
+        parent_stripped: bool,
     ) -> AnyResult<()> {
         for f in fields {
             let field_data = Self::find_item(data, f)?;
@@ -297,6 +300,7 @@ impl PublicApi {
                                 field_data.inner
                             ),
                         },
+                        parent_stripped,
                     )),
                     deprecated: field_data.deprecation.is_some(),
                 },

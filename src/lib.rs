@@ -6,6 +6,8 @@ mod manifest;
 mod public_api;
 mod rustdoc;
 
+pub use comparator::DiagnosticVersionChange;
+
 use anyhow::{Context, Result as AnyResult};
 use clap::{crate_name, crate_version};
 pub use comparator::ApiCompatibilityDiagnostics;

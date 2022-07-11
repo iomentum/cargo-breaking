@@ -1,6 +1,8 @@
+use derivative::Derivative;
 use rustdoc_types::{Crate, Enum, Struct, StructType, Typedef, Union};
 
-use crate::diagnosis::DiagnosticGenerator;
+use crate::diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator};
+use crate::public_api::ItemPath;
 
 use crate::rustdoc::types::{Generics, RustdocToCb, Type};
 
@@ -74,19 +76,31 @@ impl InnerTypeMetadata {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Derivative)]
+#[derivative(PartialEq)]
 pub(crate) struct TypeFieldMetadata {
     name: String,
     ty: Type,
+    #[derivative(PartialEq = "ignore")]
+    parent_stripped: bool,
 }
 
 impl TypeFieldMetadata {
-    pub fn new(name: String, ty: Type) -> TypeFieldMetadata {
-        TypeFieldMetadata { name, ty }
+    pub fn new(name: String, ty: Type, parent_stripped: bool) -> TypeFieldMetadata {
+        TypeFieldMetadata {
+            name,
+            ty,
+            parent_stripped,
+        }
     }
 }
 
-impl DiagnosticGenerator for TypeFieldMetadata {}
+impl DiagnosticGenerator for TypeFieldMetadata {
+    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        // adding a (public) field is breaking if the parent type doesn't have private fields
+        collector.add(DiagnosisItem::addition(path.clone()).set_breaking(!self.parent_stripped));
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EnumVariantMetadata {

@@ -1,4 +1,5 @@
 use cargo_breaking::tests::get_diff;
+use cargo_breaking::DiagnosticVersionChange::*;
 
 #[test]
 fn private_is_not_reported() {
@@ -22,6 +23,7 @@ fn addition() {
     };
 
     assert_eq!(diff.to_string(), "+ A (struct)\n");
+    assert_eq!(diff.get_version_change(), Minor);
 }
 
 #[test]
@@ -34,6 +36,7 @@ fn removal() {
     };
 
     assert_eq!(diff.to_string(), "- B (struct)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -48,6 +51,7 @@ fn new_public_field_tupled_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "≠ C (struct)\n+ C::0 (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -62,6 +66,7 @@ fn new_private_field_tupled_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "≠ C (struct)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -92,6 +97,7 @@ fn new_public_field_named_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "+ D::a (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -130,6 +136,7 @@ fn new_private_field_named_with_existing_public_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "≠ D (struct)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -167,6 +174,7 @@ fn public_named_field_modification() {
     };
 
     assert_eq!(diff.to_string(), "≠ A::a (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -181,6 +189,7 @@ fn public_unnamed_field_modification() {
     };
 
     assert_eq!(diff.to_string(), "≠ A::0 (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -197,6 +206,7 @@ fn public_named_field_removal_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "- A::a (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
@@ -211,13 +221,14 @@ fn public_unnamed_field_removal_is_modification() {
     };
 
     assert_eq!(diff.to_string(), "- A::0 (struct field)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }
 
 #[test]
 fn generic_change_is_modification() {
     let diff = get_diff! {
         {
-            pub struct E;
+            pub struct E { f: u8 }
         },
         {
             pub struct E<T> { f: T }
@@ -241,4 +252,5 @@ fn whole_struct_removal() {
     };
 
     assert_eq!(diff.to_string(), "- A (struct)\n");
+    assert_eq!(diff.get_version_change(), Major);
 }

@@ -109,6 +109,14 @@ impl DiagnosisItem {
         self.breaking
     }
 
+    pub(crate) fn set_breaking(self, breaking: bool) -> DiagnosisItem {
+        DiagnosisItem {
+            kind: self.kind,
+            path: self.path,
+            breaking,
+        }
+    }
+
     pub(crate) fn is_addition(&self) -> bool {
         self.kind == DiagnosisItemKind::Addition
     }
