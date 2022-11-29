@@ -1,5 +1,8 @@
 # `cargo-breaking`
 
+! Disclaimer !: This repository is no longer maintained and our advice is to use https://crates.io/crates/cargo-semver-checks instead.
+
+
 <div style="text-align: center;" align="center">
 <img src="https://raw.githubusercontent.com/iomentum/cargo-breaking/main/logo-full.svg" width="500" />
 <br/>
