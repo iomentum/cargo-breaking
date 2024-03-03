@@ -1,3 +1,0 @@
-# Repository
-
-WORK IN PROGRESS

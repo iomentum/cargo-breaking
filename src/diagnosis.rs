@@ -1,13 +1,5 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use syn::Ident;
-
-#[cfg(test)]
-use syn::{
-    parse::{Parse, ParseStream, Result as ParseResult},
-    Token,
-};
-
 use crate::public_api::ItemPath;
 
 pub struct DiagnosisCollector {
@@ -24,13 +16,39 @@ impl DiagnosisCollector {
     }
 
     pub(crate) fn finalize(self) -> Vec<DiagnosisItem> {
-        self.inner
+        let mut res = self.inner;
+
+        // remove redundant lines
+        // this removes all lines that are hierarchically under additions or removals
+        // e.g. if a struct is removed, then this will remove all the lines corresponding
+        // to the removal of its fields
+        // so you get `- foo::A` instead of `- foo::A\n- foo::A::field1\n- foo::A::field2`
+
+        // sorting beforehand makes the whole thing linear-time
+        res.sort_by_cached_key(|item| item.path.clone());
+        let mut vec = Vec::with_capacity(res.len());
+        let mut prefix: Option<ItemPath> = None;
+        for item in res {
+            if let Some(p) = &prefix {
+                if item.path.path.starts_with(&*p.path) && item.path.path.len() > p.path.len() {
+                    continue;
+                } else {
+                    prefix = None;
+                }
+            }
+            if item.kind == DiagnosisItemKind::Removal || item.kind == DiagnosisItemKind::Addition {
+                prefix = Some(item.path.clone());
+            };
+            vec.push(item);
+        }
+        vec.sort();
+        vec
     }
 }
 
 pub(crate) trait DiagnosticGenerator {
     fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::removal(path.clone(), None));
+        collector.add(DiagnosisItem::removal(path.clone()));
     }
 
     fn modification_diagnosis(
@@ -39,11 +57,11 @@ pub(crate) trait DiagnosticGenerator {
         path: &ItemPath,
         collector: &mut DiagnosisCollector,
     ) {
-        collector.add(DiagnosisItem::modification(path.clone(), None));
+        collector.add(DiagnosisItem::modification(path.clone()));
     }
 
     fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
-        collector.add(DiagnosisItem::addition(path.clone(), None));
+        collector.add(DiagnosisItem::addition(path.clone()));
     }
 }
 
@@ -51,40 +69,52 @@ pub(crate) trait DiagnosticGenerator {
 pub(crate) struct DiagnosisItem {
     kind: DiagnosisItemKind,
     path: ItemPath,
-    trait_impl: Option<Ident>,
+    breaking: bool,
 }
 
 impl DiagnosisItem {
-    pub(crate) fn removal(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn removal(path: ItemPath) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Removal,
             path,
-            trait_impl,
+            breaking: true,
         }
     }
 
-    pub(crate) fn modification(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn modification(path: ItemPath) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Modification,
             path,
-            trait_impl,
+            breaking: true,
         }
     }
 
-    pub(crate) fn addition(path: ItemPath, trait_impl: Option<Ident>) -> DiagnosisItem {
+    pub(crate) fn addition(path: ItemPath) -> DiagnosisItem {
         DiagnosisItem {
             kind: DiagnosisItemKind::Addition,
             path,
-            trait_impl,
+            breaking: false,
         }
     }
 
-    pub(crate) fn is_removal(&self) -> bool {
-        self.kind == DiagnosisItemKind::Removal
+    pub(crate) fn deprecation(path: ItemPath) -> DiagnosisItem {
+        DiagnosisItem {
+            kind: DiagnosisItemKind::Deprecation,
+            path,
+            breaking: false,
+        }
     }
 
-    pub(crate) fn is_modification(&self) -> bool {
-        self.kind == DiagnosisItemKind::Modification
+    pub(crate) fn is_breaking(&self) -> bool {
+        self.breaking
+    }
+
+    pub(crate) fn set_breaking(self, breaking: bool) -> DiagnosisItem {
+        DiagnosisItem {
+            kind: self.kind,
+            path: self.path,
+            breaking,
+        }
     }
 
     pub(crate) fn is_addition(&self) -> bool {
@@ -94,36 +124,7 @@ impl DiagnosisItem {
 
 impl Display for DiagnosisItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{} {}", self.kind, self.path)?;
-
-        if let Some(trait_) = &self.trait_impl {
-            write!(f, ": {}", trait_)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[cfg(test)]
-impl Parse for DiagnosisItem {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItem> {
-        let kind = input.parse()?;
-        let path = input.parse()?;
-
-        let trait_impl = if input.peek(Token![:]) {
-            input.parse::<Token![:]>().unwrap();
-            input.parse::<Token![impl]>().unwrap();
-
-            Some(input.parse()?)
-        } else {
-            None
-        };
-
-        Ok(DiagnosisItem {
-            kind,
-            path,
-            trait_impl,
-        })
+        write!(f, "{} {}", self.kind, self.path)
     }
 }
 
@@ -132,78 +133,18 @@ enum DiagnosisItemKind {
     Removal,
     Modification,
     Addition,
+    Deprecation,
 }
 
 impl Display for DiagnosisItemKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        use DiagnosisItemKind::*;
         match self {
-            DiagnosisItemKind::Removal => '-',
-            DiagnosisItemKind::Modification => '≠',
-            DiagnosisItemKind::Addition => '+',
+            Removal => '-',
+            Modification => '≠',
+            Addition => '+',
+            Deprecation => '⚠',
         }
         .fmt(f)
-    }
-}
-
-#[cfg(test)]
-impl Parse for DiagnosisItemKind {
-    fn parse(input: ParseStream) -> ParseResult<DiagnosisItemKind> {
-        if input.peek(Token![-]) {
-            input.parse::<Token![-]>().unwrap();
-            Ok(DiagnosisItemKind::Removal)
-        } else if input.peek(Token![<]) {
-            input.parse::<Token![<]>().unwrap();
-            input.parse::<Token![>]>().unwrap();
-
-            Ok(DiagnosisItemKind::Modification)
-        } else if input.peek(Token![+]) {
-            input.parse::<Token![+]>().unwrap();
-            Ok(DiagnosisItemKind::Addition)
-        } else {
-            Err(input.error("Excepted `-`, `<>` or `+`"))
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use syn::parse_quote;
-
-    use super::*;
-
-    #[test]
-    fn display_implementation_standard_removal() {
-        let diag: DiagnosisItem = parse_quote! {
-            - foo::baz::Bar
-        };
-
-        assert_eq!(diag.to_string(), "- foo::baz::Bar");
-    }
-
-    #[test]
-    fn display_implementation_standard_modification() {
-        let diag: DiagnosisItem = parse_quote! {
-            <> foo::Bar
-        };
-
-        assert_eq!(diag.to_string(), "≠ foo::Bar");
-    }
-
-    #[test]
-    fn display_implementation_standard_addition() {
-        let diag: DiagnosisItem = parse_quote! {
-            + foo::bar::Baz
-        };
-
-        assert_eq!(diag.to_string(), "+ foo::bar::Baz");
-    }
-
-    #[test]
-    fn display_implementation_trait_impl() {
-        let diag: DiagnosisItem = parse_quote! {
-            <> foo::bar::Baz: impl Foo
-        };
-
-        assert_eq!(diag.to_string(), "≠ foo::bar::Baz: Foo");
     }
 }

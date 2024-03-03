@@ -1,6 +1,6 @@
 # Foreword
 
-This book's goal is to hold and maintain informations on how the innards of cargo-breaking works together to compare two versions of a library and display the differences between both.
+The goal of this book is to help you understand the inner-workings of cargo-breaking and how it compares two versions of a Rust project to display the differences between both.
 
 Example:
 
@@ -9,7 +9,7 @@ $ cargo breaking
 - user::User::from_str
 ≠ user::User
 + user::User::from_path
-+ user::User: Debug
++ user::User::[impl Debug]
 
 Next version is: 3.0.0
 ```
@@ -31,10 +31,6 @@ upgrading from a previous version.
 
 ### Git workflow
 
-Most work is commited in separate branch, before getting merged to `main` all
-at once, once we're satisfied with the refactoring, fixes, and features added.
-These branches are named `scrabsha/iter-dd-mm-yy`, representing the date at
-which the iteration is started (for instance, `scrabsha/iter-19-06-21`).
-
-Installing `cargo-breaking` from the following branches give you the latest
-changes. It may have instabilities, though.
+Most work is done in separate branches, before getting merged to `main` all
+at once, once the quality of the code is judged to be good enough. The branches
+usually follow the naming convention `author/feature-name`.

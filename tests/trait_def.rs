@@ -1,21 +1,20 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::tests::get_diff;
 
 #[test]
 fn addition_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
             pub trait A {}
         }
     };
 
-    assert_eq!(diff.to_string(), "+ A\n");
+    assert_eq!(diff.to_string(), "+ A (trait)\n");
 }
 
 #[test]
 fn trait_item_addition() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub trait A {}
         },
@@ -24,30 +23,30 @@ fn trait_item_addition() {
         },
     };
 
-    assert_eq!(diff.to_string(), "+ A::B\n");
+    assert_eq!(diff.to_string(), "+ A::B (associated type)\n");
 }
 
 #[test]
 fn trait_item_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub trait A {
-                type B = u8;
+                const B: u8 = 5;
             }
         },
         {
             pub trait A {
-                type B = u16;
+                const B: u8 = 6;
             }
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ A::B\n");
+    assert_eq!(diff.to_string(), "≠ A::B (associated constant)\n");
 }
 
 #[test]
 fn trait_item_removal() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub trait A {
                 type B;
@@ -58,12 +57,12 @@ fn trait_item_removal() {
         },
     };
 
-    assert_eq!(diff.to_string(), "- A::B\n");
+    assert_eq!(diff.to_string(), "- A::B (associated type)\n");
 }
 
 #[test]
 fn trait_item_kind_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub trait A {
                 type B;
@@ -76,12 +75,15 @@ fn trait_item_kind_modification() {
         },
     };
 
-    assert_eq!(diff.to_string(), "- A::B\n+ A::B\n");
+    assert_eq!(
+        diff.to_string(),
+        "- A::B (associated type)\n+ A::B (associated constant)\n"
+    );
 }
 
 #[test]
 fn in_private_module() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {},
         {
             mod a {
@@ -95,7 +97,7 @@ fn in_private_module() {
 
 #[test]
 fn in_public_module() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
             pub mod a {}
         },
@@ -106,5 +108,5 @@ fn in_public_module() {
         },
     };
 
-    assert_eq!(diff.to_string(), "+ a::A\n");
+    assert_eq!(diff.to_string(), "+ a::A (trait)\n");
 }

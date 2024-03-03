@@ -1,49 +1,66 @@
-use cargo_breaking::ApiCompatibilityDiagnostics;
-use syn::parse_quote;
+use cargo_breaking::tests::get_diff;
 
 #[test]
 fn addition_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait A {}
+
             pub struct T;
         },
         {
+            pub trait A {}
+
             pub struct T;
 
             impl A for T {}
         },
     };
 
-    assert_eq!(diff.to_string(), "+ T: A\n");
+    assert_eq!(diff.to_string(), "+ T::[impl A] (impl)\n");
 }
 
 #[test]
 fn modification_simple() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
-            pub struct T;
+            pub trait A {}
 
-            impl<A> A for T<A> {}
+            pub struct T<U> {
+                u: U,
+            }
+
+            impl<X> A for T<X> {}
         },
         {
-            pub struct T;
+            pub trait A {}
 
-            impl<B> A for T<B> {}
+            pub struct T<U> {
+                u: U,
+            }
+
+            impl<Y> A for T<Y> {}
         }
     };
 
-    assert_eq!(diff.to_string(), "≠ T: A\n");
+    assert_eq!(diff.to_string(), "≠ T::[impl A] (impl)\n");
 }
 
 #[test]
 fn provided_method_implementation_is_not_reported() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait T {}
+
             pub struct S;
 
             impl T for S {}
         },
         {
+            pub trait T {
+                fn f();
+            }
+
             pub struct S;
 
             impl T for S {
@@ -52,13 +69,17 @@ fn provided_method_implementation_is_not_reported() {
         },
     };
 
-    assert!(diff.is_empty());
+    assert_eq!(diff.to_string(), "+ T::f (method)\n");
 }
 
 #[test]
 fn constant_modification_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait T {
+                const C: usize;
+            }
+
             pub struct S;
 
             impl T for S {
@@ -66,6 +87,10 @@ fn constant_modification_is_modification() {
             }
         },
         {
+            pub trait T {
+                const C: usize;
+            }
+
             pub struct S;
 
             impl T for S {
@@ -74,41 +99,55 @@ fn constant_modification_is_modification() {
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ S: T\n");
+    assert_eq!(diff.to_string(), "≠ S::[impl T]::C (associated constant)\n");
 }
 
 #[test]
 fn type_modification_is_modification() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait T {
+                type C;
+            }
+
             pub struct S;
 
             impl T for S {
-                type T = u8;
+                type C = u8;
             }
         },
         {
+            pub trait T {
+                type C;
+            }
+
             pub struct S;
 
             impl T for S {
-                type T = u16;
+                type C = u16;
             }
         },
     };
 
-    assert_eq!(diff.to_string(), "≠ S: T\n");
+    assert_eq!(diff.to_string(), "≠ S::[impl T]::C (associated type)\n");
 }
 
 #[test]
 fn impl_trait_order_is_not_tracked() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait T1 {}
+            pub trait T2 {}
+
             pub struct S;
 
             impl T1 for S {}
             impl T2 for S {}
         },
         {
+            pub trait T1 {}
+            pub trait T2 {}
+
             pub struct S;
 
             impl T2 for S {}
@@ -121,13 +160,17 @@ fn impl_trait_order_is_not_tracked() {
 
 #[test]
 fn not_reported_when_type_is_not_public() {
-    let diff: ApiCompatibilityDiagnostics = parse_quote! {
+    let diff = get_diff! {
         {
+            pub trait T {}
+
             struct S;
 
             impl T for S {}
         },
         {
+            pub trait T {}
+
             struct S;
         }
     };

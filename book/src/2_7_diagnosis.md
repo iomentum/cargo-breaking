@@ -1,3 +1,0 @@
-# Diagnosis
-
-WORK IN PROGRESS

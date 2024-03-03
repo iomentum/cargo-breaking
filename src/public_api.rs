@@ -1,68 +1,330 @@
+mod assoc_const;
+mod assoc_type;
 mod functions;
-mod imports;
 mod methods;
+mod modules;
 mod trait_defs;
 mod trait_impls;
 mod types;
-mod utils;
 
+use anyhow::{bail, Context, Error as AnyError, Result as AnyResult};
+use itertools::Itertools;
+use rustdoc_types::{Crate, Id, Item, ItemEnum, Variant};
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
-use syn::{
-    parse::{Parse, ParseStream, Result as ParseResult},
-    visit::Visit,
-    Ident,
-};
-
-#[cfg(test)]
-use syn::Token;
-
 use tap::Tap;
 
-use crate::{
-    ast::CrateAst,
-    diagnosis::{DiagnosisCollector, DiagnosticGenerator},
-};
+use crate::diagnosis::{DiagnosisCollector, DiagnosisItem, DiagnosticGenerator};
+use crate::public_api::assoc_const::AssocConstMetadata;
+use crate::public_api::assoc_type::AssocTypeMetadata;
+use crate::public_api::modules::ModuleMetadata;
+use crate::public_api::trait_defs::TraitDefMetadata;
+use crate::public_api::trait_impls::TraitImplMetadata;
+use crate::public_api::types::{EnumVariantMetadata, TypeFieldMetadata, TypeMetadata};
+use crate::rustdoc::types::RustdocToCb;
 
-use self::{
-    functions::{FnPrototype, FnVisitor},
-    imports::PathResolver,
-    methods::{MethodMetadata, MethodVisitor},
-    trait_defs::{TraitDefMetadata, TraitDefVisitor},
-    trait_impls::TraitImplVisitor,
-    types::{TypeMetadata, TypeVisitor},
-};
+use self::{functions::FnPrototype, methods::MethodMetadata};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PublicApi {
+pub struct PublicApi {
     items: HashMap<ItemPath, ItemKind>,
 }
 
 impl PublicApi {
-    pub(crate) fn from_ast(program: &CrateAst) -> PublicApi {
-        let resolver = PathResolver::new(program);
-
-        let mut type_visitor = TypeVisitor::new();
-        type_visitor.visit_file(program.ast());
-
-        let mut method_visitor = MethodVisitor::new(type_visitor.types(), &resolver);
-        method_visitor.visit_file(program.ast());
-
-        let mut fn_visitor = FnVisitor::new(method_visitor.items());
-        fn_visitor.visit_file(program.ast());
-
-        let mut trait_impl_visitor = TraitImplVisitor::new(fn_visitor.items(), &resolver);
-        trait_impl_visitor.visit_file(program.ast());
-
-        let mut trait_def_visitor = TraitDefVisitor::new(trait_impl_visitor.items(), &resolver);
-        trait_def_visitor.visit_file(program.ast());
-
-        let items = trait_def_visitor.items();
-
+    fn new(items: HashMap<ItemPath, ItemKind>) -> PublicApi {
         PublicApi { items }
+    }
+
+    pub(crate) fn from_crate(data: &Crate, current: u32) -> AnyResult<PublicApi> {
+        let items: Result<HashMap<ItemPath, ItemKind>, AnyError> = data
+            .index
+            .values()
+            .filter(|item| item.crate_id == current) // only analyze public items from the crate we're processing
+            .map(|item| {
+                let mut res = Vec::new();
+                if let Some(summary) = data.paths.get(&item.id) {
+                    // get path of item; skip first item (crate name)
+                    let path = ItemPath::new(summary.path[1..].to_vec(), summary.kind.to_cb(data));
+                    Self::process_item(data, &mut res, &path, item)?;
+                    Ok(res)
+                } else {
+                    Ok(vec![])
+                }
+            })
+            .flatten_ok()
+            .collect();
+
+        items.map(PublicApi::new)
+    }
+
+    fn process_item(
+        data: &Crate,
+        res: &mut Vec<(ItemPath, ItemKind)>,
+        path: &ItemPath,
+        item: &Item,
+    ) -> AnyResult<()> {
+        let kind = match &item.inner {
+            ItemEnum::Function(f) => ItemKindData::Fn(f.to_cb(data)),
+            ItemEnum::Struct(s) => {
+                Self::process_fields(data, res, path, &s.fields, s.fields_stripped)?;
+                Self::process_impls(data, res, path, &s.impls)?;
+                ItemKindData::Type(s.to_cb(data))
+            }
+            ItemEnum::Union(u) => {
+                Self::process_fields(data, res, path, &u.fields, u.fields_stripped)?;
+                Self::process_impls(data, res, path, &u.impls)?;
+                ItemKindData::Type(u.to_cb(data))
+            }
+            ItemEnum::Enum(e) => {
+                Self::process_variants(data, res, path, &e.variants, e.variants_stripped)?;
+                Self::process_impls(data, res, path, &e.impls)?;
+                ItemKindData::Type(e.to_cb(data))
+            }
+            ItemEnum::Module(_) => ItemKindData::Module(ModuleMetadata::new()),
+            ItemEnum::Trait(t) => {
+                Self::process_trait_items(data, res, path, &t.items)?;
+                ItemKindData::TraitDef(t.to_cb(data))
+            }
+            ItemEnum::Method(m) => ItemKindData::Method(m.to_cb(data)),
+            ItemEnum::AssocType {
+                generics,
+                bounds,
+                default,
+            } => ItemKindData::AssocType(AssocTypeMetadata {
+                generics: generics.to_cb(data),
+                bounds: bounds.to_cb(data),
+                default: default.as_ref().map(|d| d.to_cb(data)),
+            }),
+            ItemEnum::AssocConst { type_, default } => {
+                ItemKindData::AssocConst(AssocConstMetadata {
+                    type_: type_.to_cb(data),
+                    default: default.as_ref().cloned(),
+                })
+            }
+            ItemEnum::Typedef(t) => ItemKindData::Type(t.to_cb(data)),
+            _ => return Ok(()),
+        };
+        res.push((
+            path.clone(),
+            ItemKind {
+                data: kind,
+                deprecated: item.deprecation.is_some(),
+            },
+        ));
+        Ok(())
+    }
+
+    fn find_item<'a>(data: &'a Crate, id: &'a Id) -> AnyResult<&'a Item> {
+        data.index
+            .get(id)
+            .context("Internal error: missing item in summary")
+    }
+
+    fn process_impls(
+        data: &Crate,
+        res: &mut Vec<(ItemPath, ItemKind)>,
+        path: &ItemPath,
+        impls: &[Id],
+    ) -> AnyResult<()> {
+        for i in impls {
+            if i.0.starts_with("a:") || i.0.starts_with("b:") {
+                continue; // auto-implemented or blanket trait
+            }
+            let impl_data = Self::find_item(data, i)?;
+            let impl_inner = match &impl_data.inner {
+                ItemEnum::Impl(i) => i,
+                _ => bail!(
+                    "Internal error: unexpected item type: {:?}",
+                    impl_data.inner
+                ),
+            };
+            if let Some(t) = &impl_inner.trait_ {
+                let new_path =
+                    path.extend(format!("[impl {}]", t.to_cb(data)), ItemSummaryKind::Impl);
+                res.push((
+                    new_path.clone(),
+                    ItemKind {
+                        data: ItemKindData::TraitImpl(impl_inner.to_cb(data)),
+                        deprecated: impl_data.deprecation.is_some(),
+                    },
+                ));
+                for item in &impl_inner.items {
+                    let item_data = Self::find_item(data, item)?;
+                    if !matches!(item_data.inner, rustdoc_types::ItemEnum::Method(_)) {
+                        let new_path = new_path.extend(
+                            item_data.name.clone().unwrap(),
+                            item_data.inner.to_cb(data).in_impl(),
+                        );
+                        Self::process_item(data, res, &new_path, item_data)?;
+                    }
+                }
+            } else {
+                let new_path = match &impl_inner.for_ {
+                    rustdoc_types::Type::ResolvedPath {
+                        param_names,
+                        args: Some(gen_args),
+                        ..
+                    } if param_names.is_empty() => {
+                        if let rustdoc_types::GenericArgs::AngleBracketed {
+                            ref args,
+                            bindings: _,
+                        } = **gen_args
+                        {
+                            if args.is_empty() {
+                                path.clone()
+                            } else if !args.iter().any(|arg| {
+                                matches!(
+                                    arg,
+                                    rustdoc_types::GenericArg::Type(rustdoc_types::Type::Generic(
+                                        _
+                                    ))
+                                )
+                            }) {
+                                path.extend(
+                                    format!("{}", gen_args.to_cb(data)),
+                                    ItemSummaryKind::Impl,
+                                )
+                            } else {
+                                let p = path.extend(
+                                    format!("{}", gen_args.to_cb(data)),
+                                    ItemSummaryKind::Impl,
+                                );
+                                res.push((
+                                    p.clone(),
+                                    ItemKind {
+                                        data: ItemKindData::TraitImpl(impl_inner.to_cb(data)),
+                                        deprecated: impl_data.deprecation.is_some(),
+                                    },
+                                ));
+                                p
+                            }
+                        } else {
+                            bail!(
+                                "Internal error: unexpected generic args for impl target: {:?}",
+                                gen_args
+                            );
+                        }
+                    }
+                    _ => bail!(
+                        "Internal error: unexpected object for impl target: {:?}",
+                        impl_inner.for_
+                    ),
+                };
+                for item in &impl_inner.items {
+                    let item_data = Self::find_item(data, item)?;
+                    let new_path = new_path.extend(
+                        item_data.name.clone().unwrap(),
+                        item_data.inner.to_cb(data).in_impl(),
+                    );
+                    Self::process_item(data, res, &new_path, item_data)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn process_variants(
+        data: &Crate,
+        res: &mut Vec<(ItemPath, ItemKind)>,
+        path: &ItemPath,
+        variants: &[Id],
+        parent_stripped: bool,
+    ) -> AnyResult<()> {
+        for v in variants {
+            let var_data = Self::find_item(data, v)?;
+            let name = var_data
+                .name
+                .clone()
+                .context("Internal error: missing variant name")?;
+            let new_path = path.extend(name.clone(), ItemSummaryKind::Variant);
+            match &var_data.inner {
+                ItemEnum::Variant(v) => match v {
+                    Variant::Plain => {}
+                    // tuple struct is equivalent to named struct
+                    // using indices as names
+                    Variant::Tuple(t) => {
+                        for (i, field) in t.iter().enumerate() {
+                            res.push((
+                                new_path.extend(i.to_string(), ItemSummaryKind::StructField),
+                                ItemKind {
+                                    deprecated: false,
+                                    data: ItemKindData::Field(TypeFieldMetadata::new(
+                                        i.to_string(),
+                                        field.to_cb(data),
+                                        parent_stripped,
+                                    )),
+                                },
+                            ));
+                        }
+                    }
+                    Variant::Struct(f) => {
+                        Self::process_fields(data, res, &new_path, f, parent_stripped)?;
+                    }
+                },
+                _ => bail!("Unexpected item type in enum: {:?}", var_data.inner),
+            };
+            let value = ItemKind {
+                data: ItemKindData::Variant(EnumVariantMetadata::new(name.clone())),
+                deprecated: var_data.deprecation.is_some(),
+            };
+            res.push((new_path, value));
+        }
+        Ok(())
+    }
+
+    fn process_fields(
+        data: &Crate,
+        res: &mut Vec<(ItemPath, ItemKind)>,
+        path: &ItemPath,
+        fields: &[Id],
+        parent_stripped: bool,
+    ) -> AnyResult<()> {
+        for f in fields {
+            let field_data = Self::find_item(data, f)?;
+            let name = field_data
+                .name
+                .clone()
+                .context("Internal error: missing field name")?;
+            res.push((
+                path.extend(name.clone(), ItemSummaryKind::StructField),
+                ItemKind {
+                    data: ItemKindData::Field(TypeFieldMetadata::new(
+                        name.clone(),
+                        match &field_data.inner {
+                            ItemEnum::StructField(ty) => ty.to_cb(data),
+                            _ => bail!(
+                                "Internal error: Unexpected item type in struct: {:?}",
+                                field_data.inner
+                            ),
+                        },
+                        parent_stripped,
+                    )),
+                    deprecated: field_data.deprecation.is_some(),
+                },
+            ));
+        }
+        Ok(())
+    }
+
+    fn process_trait_items(
+        data: &Crate,
+        res: &mut Vec<(ItemPath, ItemKind)>,
+        path: &ItemPath,
+        items: &[Id],
+    ) -> AnyResult<()> {
+        for i in items {
+            let item_data = Self::find_item(data, i)?;
+            let name = item_data
+                .name
+                .clone()
+                .context("Internal error: missing trait item name")?;
+            let new_path = path.extend(name.clone(), item_data.inner.to_cb(data));
+            Self::process_item(data, res, &new_path, item_data)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn items(&self) -> &HashMap<ItemPath, ItemKind> {
@@ -70,31 +332,165 @@ impl PublicApi {
     }
 }
 
-impl Parse for PublicApi {
-    fn parse(input: ParseStream) -> ParseResult<PublicApi> {
-        let ast = input.parse()?;
-        Ok(PublicApi::from_ast(&ast))
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ItemSummaryKind {
+    Module,
+    ExternCrate,
+    Import,
+    Struct,
+    StructField,
+    Union,
+    Enum,
+    Variant,
+    Function,
+    Typedef,
+    OpaqueTy,
+    Constant,
+    Trait,
+    TraitAlias,
+    Method,
+    Impl,
+    Static,
+    ForeignType,
+    Macro,
+    ProcAttribute,
+    ProcDerive,
+    AssocConst,
+    AssocType,
+    Primitive,
+    ProcMacro,
+    PrimitiveType,
+    Keyword,
+    Unknown,
+}
+
+impl RustdocToCb<ItemSummaryKind> for rustdoc_types::ItemKind {
+    fn to_cb(&self, _data: &Crate) -> ItemSummaryKind {
+        match self {
+            rustdoc_types::ItemKind::Module => ItemSummaryKind::Module,
+            rustdoc_types::ItemKind::ExternCrate => ItemSummaryKind::ExternCrate,
+            rustdoc_types::ItemKind::Import => ItemSummaryKind::Import,
+            rustdoc_types::ItemKind::Struct => ItemSummaryKind::Struct,
+            rustdoc_types::ItemKind::StructField => ItemSummaryKind::StructField,
+            rustdoc_types::ItemKind::Union => ItemSummaryKind::Union,
+            rustdoc_types::ItemKind::Enum => ItemSummaryKind::Enum,
+            rustdoc_types::ItemKind::Variant => ItemSummaryKind::Variant,
+            rustdoc_types::ItemKind::Function => ItemSummaryKind::Function,
+            rustdoc_types::ItemKind::Typedef => ItemSummaryKind::Typedef,
+            rustdoc_types::ItemKind::OpaqueTy => ItemSummaryKind::OpaqueTy,
+            rustdoc_types::ItemKind::Constant => ItemSummaryKind::Constant,
+            rustdoc_types::ItemKind::Trait => ItemSummaryKind::Trait,
+            rustdoc_types::ItemKind::TraitAlias => ItemSummaryKind::TraitAlias,
+            rustdoc_types::ItemKind::Method => ItemSummaryKind::Method,
+            rustdoc_types::ItemKind::Impl => ItemSummaryKind::Impl,
+            rustdoc_types::ItemKind::Static => ItemSummaryKind::Static,
+            rustdoc_types::ItemKind::ForeignType => ItemSummaryKind::ForeignType,
+            rustdoc_types::ItemKind::Macro => ItemSummaryKind::Macro,
+            rustdoc_types::ItemKind::ProcAttribute => ItemSummaryKind::ProcAttribute,
+            rustdoc_types::ItemKind::ProcDerive => ItemSummaryKind::ProcDerive,
+            rustdoc_types::ItemKind::AssocConst => ItemSummaryKind::AssocConst,
+            rustdoc_types::ItemKind::AssocType => ItemSummaryKind::AssocType,
+            rustdoc_types::ItemKind::Primitive => ItemSummaryKind::Primitive,
+            rustdoc_types::ItemKind::Keyword => ItemSummaryKind::Keyword,
+        }
+    }
+}
+
+impl RustdocToCb<ItemSummaryKind> for ItemEnum {
+    fn to_cb(&self, _data: &Crate) -> ItemSummaryKind {
+        match self {
+            ItemEnum::Module(_) => ItemSummaryKind::Module,
+            ItemEnum::ExternCrate { .. } => ItemSummaryKind::ExternCrate,
+            ItemEnum::Import(_) => ItemSummaryKind::Import,
+            ItemEnum::Struct(_) => ItemSummaryKind::Struct,
+            ItemEnum::StructField(_) => ItemSummaryKind::StructField,
+            ItemEnum::Union(_) => ItemSummaryKind::Union,
+            ItemEnum::Enum(_) => ItemSummaryKind::Enum,
+            ItemEnum::Variant(_) => ItemSummaryKind::Variant,
+            ItemEnum::Function(_) => ItemSummaryKind::Function,
+            ItemEnum::Typedef(_) => ItemSummaryKind::Typedef,
+            ItemEnum::OpaqueTy(_) => ItemSummaryKind::OpaqueTy,
+            ItemEnum::Constant(_) => ItemSummaryKind::Constant,
+            ItemEnum::Trait(_) => ItemSummaryKind::Trait,
+            ItemEnum::TraitAlias(_) => ItemSummaryKind::TraitAlias,
+            ItemEnum::Method(_) => ItemSummaryKind::Method,
+            ItemEnum::Impl(_) => ItemSummaryKind::Impl,
+            ItemEnum::Static(_) => ItemSummaryKind::Static,
+            ItemEnum::ForeignType => ItemSummaryKind::ForeignType,
+            ItemEnum::Macro(_) => ItemSummaryKind::Macro,
+            ItemEnum::AssocConst { .. } => ItemSummaryKind::AssocConst,
+            ItemEnum::AssocType { .. } => ItemSummaryKind::AssocType,
+            ItemEnum::ProcMacro(_) => ItemSummaryKind::ProcMacro,
+            ItemEnum::PrimitiveType(_) => ItemSummaryKind::PrimitiveType,
+        }
+    }
+}
+
+impl Display for ItemSummaryKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(
+            f,
+            "{}",
+            match self {
+                ItemSummaryKind::Module => "module",
+                ItemSummaryKind::ExternCrate => "extern crate",
+                ItemSummaryKind::Import => "import",
+                ItemSummaryKind::Struct => "struct",
+                ItemSummaryKind::StructField => "struct field",
+                ItemSummaryKind::Union => "union",
+                ItemSummaryKind::Enum => "enum",
+                ItemSummaryKind::Variant => "variant",
+                ItemSummaryKind::Function => "function",
+                ItemSummaryKind::Typedef => "typedef",
+                ItemSummaryKind::OpaqueTy => "opaque type",
+                ItemSummaryKind::Constant => "constant",
+                ItemSummaryKind::Trait => "trait",
+                ItemSummaryKind::TraitAlias => "trait alias",
+                ItemSummaryKind::Method => "method",
+                ItemSummaryKind::Impl => "impl",
+                ItemSummaryKind::Static => "static",
+                ItemSummaryKind::ForeignType => "foreign type",
+                ItemSummaryKind::Macro => "macro",
+                ItemSummaryKind::ProcAttribute => "proc attribute",
+                ItemSummaryKind::ProcDerive => "proc derive",
+                ItemSummaryKind::AssocConst => "associated constant",
+                ItemSummaryKind::AssocType => "associated type",
+                ItemSummaryKind::ProcMacro => "proc macro",
+                ItemSummaryKind::Primitive => "primitive",
+                ItemSummaryKind::PrimitiveType => "primitive type",
+                ItemSummaryKind::Keyword => "keyword",
+                ItemSummaryKind::Unknown =>
+                    "unknown: this should not happen; please file a bug report",
+            }
+        )
+    }
+}
+
+impl ItemSummaryKind {
+    pub fn in_impl(self) -> ItemSummaryKind {
+        match self {
+            ItemSummaryKind::Typedef => ItemSummaryKind::AssocType,
+            _ => self,
+        }
     }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ItemPath {
-    path: Vec<Ident>,
+    pub path: Vec<String>,
+    pub kind: ItemSummaryKind,
 }
 
 impl ItemPath {
-    fn new(mut path: Vec<Ident>, last: Ident) -> ItemPath {
-        path.push(last);
-        ItemPath { path }
+    pub(crate) fn new(path: Vec<String>, kind: ItemSummaryKind) -> ItemPath {
+        ItemPath { path, kind }
     }
 
-    fn concat_both(left: Vec<Ident>, right: Vec<Ident>) -> ItemPath {
-        let path = left.tap_mut(|v| v.extend(right));
-        ItemPath { path }
-    }
-
-    fn extend(initial: ItemPath, last: Ident) -> ItemPath {
-        initial.tap_mut(|initial| initial.path.push(last))
+    pub(crate) fn extend(&self, last: String, kind: ItemSummaryKind) -> ItemPath {
+        self.clone().tap_mut(|path| {
+            path.path.push(last);
+            path.kind = kind;
+        })
     }
 }
 
@@ -107,65 +503,73 @@ impl Display for ItemPath {
                 .iter()
                 .skip(1)
                 .try_for_each(|segment| write!(f, "::{}", segment))?;
+
+            write!(f, " ({})", self.kind)
+        } else {
+            unreachable!("empty path")
         }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-impl Parse for ItemPath {
-    fn parse(input: ParseStream) -> ParseResult<ItemPath> {
-        let first_ident = input.parse::<Ident>()?;
-
-        let mut path = vec![first_ident];
-
-        while input.peek(Token![::]) {
-            input.parse::<Token![::]>().unwrap();
-            path.push(input.parse()?);
-        }
-
-        let last_segment = path.pop().unwrap();
-        Ok(ItemPath::new(path, last_segment))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ItemKind {
-    Fn(FnPrototype),
-    Type(TypeMetadata),
-    Method(MethodMetadata),
-    TraitDef(TraitDefMetadata),
-}
-
-impl ItemKind {
-    pub(crate) fn as_type_mut(&mut self) -> Option<&mut TypeMetadata> {
-        if let Self::Type(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(test)]
-impl ItemKind {
-    fn as_type(&self) -> Option<&TypeMetadata> {
-        if let ItemKind::Type(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
+pub(crate) struct ItemKind {
+    pub data: ItemKindData,
+    pub deprecated: bool,
 }
 
 impl DiagnosticGenerator for ItemKind {
     fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        self.data.removal_diagnosis(path, collector);
+    }
+
+    fn modification_diagnosis(
+        &self,
+        other: &Self,
+        path: &ItemPath,
+        collector: &mut DiagnosisCollector,
+    ) {
+        if !self.deprecated && other.deprecated {
+            collector.add(DiagnosisItem::deprecation(path.clone()));
+        }
+        if self.data != other.data {
+            self.data
+                .modification_diagnosis(&other.data, path, collector);
+        }
+    }
+
+    fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
+        self.data.addition_diagnosis(path, collector);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ItemKindData {
+    Fn(FnPrototype),
+    Type(TypeMetadata),
+    Method(MethodMetadata),
+    Module(ModuleMetadata),
+    Field(TypeFieldMetadata),
+    Variant(EnumVariantMetadata),
+    TraitDef(TraitDefMetadata),
+    TraitImpl(TraitImplMetadata),
+    AssocType(AssocTypeMetadata),
+    AssocConst(AssocConstMetadata),
+}
+
+impl DiagnosticGenerator for ItemKindData {
+    fn removal_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
         match self {
-            ItemKind::Fn(f) => f.removal_diagnosis(path, collector),
-            ItemKind::Type(t) => t.removal_diagnosis(path, collector),
-            ItemKind::Method(m) => m.removal_diagnosis(path, collector),
-            ItemKind::TraitDef(t) => t.removal_diagnosis(path, collector),
+            ItemKindData::Fn(f) => f.removal_diagnosis(path, collector),
+            ItemKindData::Type(t) => t.removal_diagnosis(path, collector),
+            ItemKindData::Method(m) => m.removal_diagnosis(path, collector),
+            ItemKindData::Module(m) => m.removal_diagnosis(path, collector),
+            ItemKindData::Field(f) => f.removal_diagnosis(path, collector),
+            ItemKindData::Variant(v) => v.removal_diagnosis(path, collector),
+            ItemKindData::TraitDef(t) => t.removal_diagnosis(path, collector),
+            ItemKindData::TraitImpl(t) => t.removal_diagnosis(path, collector),
+            ItemKindData::AssocType(a) => a.removal_diagnosis(path, collector),
+            ItemKindData::AssocConst(a) => a.removal_diagnosis(path, collector),
+            //temKind::TraitDef(t) => t.removal_diagnosis(path, collector),
         }
     }
 
@@ -176,16 +580,39 @@ impl DiagnosticGenerator for ItemKind {
         collector: &mut DiagnosisCollector,
     ) {
         match (self, other) {
-            (ItemKind::Fn(fa), ItemKind::Fn(fb)) => fa.modification_diagnosis(fb, path, collector),
-            (ItemKind::Type(ta), ItemKind::Type(tb)) => {
+            (ItemKindData::Fn(fa), ItemKindData::Fn(fb)) => {
+                fa.modification_diagnosis(fb, path, collector)
+            }
+            (ItemKindData::Type(ta), ItemKindData::Type(tb)) => {
                 ta.modification_diagnosis(tb, path, collector)
             }
-            (ItemKind::Method(ma), ItemKind::Method(mb)) => {
+            (ItemKindData::Method(ma), ItemKindData::Method(mb)) => {
                 ma.modification_diagnosis(mb, path, collector)
             }
-            (ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => {
+            (ItemKindData::Module(ma), ItemKindData::Module(mb)) => {
+                ma.modification_diagnosis(mb, path, collector)
+            }
+            (ItemKindData::Field(fa), ItemKindData::Field(fb)) => {
+                fa.modification_diagnosis(fb, path, collector)
+            }
+            (ItemKindData::Variant(va), ItemKindData::Variant(vb)) => {
+                va.modification_diagnosis(vb, path, collector)
+            }
+            (ItemKindData::TraitDef(ta), ItemKindData::TraitDef(tb)) => {
                 ta.modification_diagnosis(tb, path, collector)
             }
+            (ItemKindData::TraitImpl(ta), ItemKindData::TraitImpl(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }
+            (ItemKindData::AssocType(ta), ItemKindData::AssocType(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }
+            (ItemKindData::AssocConst(ta), ItemKindData::AssocConst(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }
+            /*(ItemKind::TraitDef(ta), ItemKind::TraitDef(tb)) => {
+                ta.modification_diagnosis(tb, path, collector)
+            }*/
             (a, b) => {
                 a.removal_diagnosis(path, collector);
                 b.addition_diagnosis(path, collector);
@@ -195,324 +622,17 @@ impl DiagnosticGenerator for ItemKind {
 
     fn addition_diagnosis(&self, path: &ItemPath, collector: &mut DiagnosisCollector) {
         match self {
-            ItemKind::Fn(f) => f.addition_diagnosis(path, collector),
-            ItemKind::Type(t) => t.addition_diagnosis(path, collector),
-            ItemKind::Method(m) => m.addition_diagnosis(path, collector),
-            ItemKind::TraitDef(t) => t.addition_diagnosis(path, collector),
-        }
-    }
-}
-
-#[cfg(test)]
-impl Parse for ItemKind {
-    fn parse(input: ParseStream) -> ParseResult<ItemKind> {
-        input
-            .parse::<FnPrototype>()
-            .map(Into::into)
-            .or_else(|mut e| {
-                input.parse::<TypeMetadata>().map(Into::into).map_err(|e_| {
-                    e.combine(e_);
-                    e
-                })
-            })
-            .or_else(|mut e| {
-                input
-                    .parse::<MethodMetadata>()
-                    .map(Into::into)
-                    .map_err(|e_| {
-                        e.combine(e_);
-                        e
-                    })
-            })
-            .or_else(|mut e| {
-                input
-                    .parse::<TraitDefMetadata>()
-                    .map(Into::into)
-                    .map_err(|e_| {
-                        e.combine(e_);
-                        e
-                    })
-            })
-    }
-}
-
-impl From<FnPrototype> for ItemKind {
-    fn from(item: FnPrototype) -> Self {
-        ItemKind::Fn(item)
-    }
-}
-
-impl From<TypeMetadata> for ItemKind {
-    fn from(item: TypeMetadata) -> Self {
-        ItemKind::Type(item)
-    }
-}
-
-impl From<MethodMetadata> for ItemKind {
-    fn from(v: MethodMetadata) -> ItemKind {
-        ItemKind::Method(v)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    mod public_api {
-        use syn::parse_quote;
-
-        use crate::public_api::trait_impls::TraitImplMetadata;
-
-        use super::*;
-
-        #[test]
-        fn adds_functions() {
-            let public_api: PublicApi = parse_quote! {
-                pub fn fact(n: u32) -> u32 {}
-            };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item_kind = parse_quote! {
-                pub fn fact(n: u32) -> u32
-            };
-
-            let k = parse_quote! { fact };
-            let left = public_api.items.get(&k);
-            let right = Some(&item_kind);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn adds_structure() {
-            let public_api: PublicApi = parse_quote! { pub struct A; };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! { struct A; };
-
-            let k = parse_quote! { A };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn adds_enum() {
-            let public_api: PublicApi = parse_quote! { pub enum B {} };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! { enum B {} };
-
-            let k = parse_quote! { B };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn filters_private_named_struct_fields() {
-            let public_api: PublicApi = parse_quote! { pub struct A { a: u8, pub b: u8 } };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! {
-                pub struct A {
-                    pub b: u8
-                }
-            };
-
-            let k = parse_quote! { A };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn filters_private_unnamed_struct_fields() {
-            let public_api: PublicApi = parse_quote! { pub struct A(u8, pub u8); };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! { pub struct A(pub u8); };
-
-            let k = parse_quote! { A };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn filters_named_enum_variant() {
-            let public_api: PublicApi = parse_quote! {
-                pub enum A {
-                    A {
-                        a: u8,
-                        pub b: u16,
-                    },
-                }
-            };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! {
-                pub enum A {
-                    A {
-                        pub b: u16
-                    },
-                }
-            };
-
-            let k = parse_quote! { A };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn filters_unnamed_enum_variant() {
-            let public_api: PublicApi = parse_quote! {
-                pub enum A {
-                    A(u8, pub u8),
-                }
-            };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let item = parse_quote! {
-                pub enum A {
-                    A(pub u8),
-                }
-            };
-
-            let k = parse_quote! { A };
-            let left = public_api.items.get(&k);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        #[should_panic(expected = "Duplicate item definition")]
-        fn panics_on_redefinition_1() {
-            let _: PublicApi = parse_quote! {
-                pub fn a () {}
-                pub fn a() {}
-            };
-        }
-
-        #[test]
-        #[should_panic(expected = "Duplicate item definition")]
-        fn panics_on_redefinition_2() {
-            let _: PublicApi = parse_quote! {
-                pub struct A;
-                pub struct A;
-            };
-        }
-
-        #[test]
-        fn adds_associated_function() {
-            let public_api: PublicApi = parse_quote! {
-                pub struct A;
-
-                impl A {
-                    pub fn a() {}
-                }
-            };
-
-            assert_eq!(public_api.items.len(), 2);
-
-            let struct_key = parse_quote! { A };
-            assert!(public_api.items.get(&struct_key).is_some());
-
-            let item = parse_quote! {
-                impl A {
-                    fn a() {}
-                }
-            };
-
-            let fn_key = parse_quote! { A::a };
-            let left = public_api.items.get(&fn_key);
-            let right = Some(&item);
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn adds_trait_implementation() {
-            let public_api: PublicApi = parse_quote! {
-                pub struct S;
-                impl T for S {}
-            };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let type_key = parse_quote! { S };
-            let type_value = public_api.items.get(&type_key).unwrap();
-
-            let trait_metadata: TraitImplMetadata = parse_quote! {
-                impl T for S {}
-                pub struct S;
-            };
-
-            let left = &[trait_metadata];
-            let right = type_value.as_type().unwrap().traits();
-
-            assert_eq!(left, right);
-        }
-
-        #[test]
-        fn adds_trait_definition() {
-            let public_api: PublicApi = parse_quote! {
-                pub trait T {}
-            };
-
-            assert_eq!(public_api.items.len(), 1);
-
-            let trait_key = parse_quote! { T };
-            let left = public_api.items.get(&trait_key).unwrap();
-
-            let right = parse_quote! {
-                pub trait T {}
-            };
-
-            assert_eq!(left, &right);
-        }
-
-        #[test]
-        fn filters_non_public_trait_definition() {
-            let public_api: PublicApi = parse_quote! {
-                trait T {}
-            };
-
-            assert!(public_api.items.is_empty());
-        }
-
-        #[test]
-        fn filters_public_test_in_non_public_module() {
-            let public_api: PublicApi = parse_quote! {
-                mod m {
-                    pub trait T {}
-                }
-            };
-
-            assert!(public_api.items.is_empty());
-        }
-
-        #[test]
-        #[should_panic(expected = "Duplicate item definition")]
-        fn panics_on_redefinition_3() {
-            let _: PublicApi = parse_quote! {
-                pub trait T {}
-                pub trait T {}
-            };
+            ItemKindData::Fn(f) => f.addition_diagnosis(path, collector),
+            ItemKindData::Type(t) => t.addition_diagnosis(path, collector),
+            ItemKindData::Method(m) => m.addition_diagnosis(path, collector),
+            ItemKindData::Module(m) => m.addition_diagnosis(path, collector),
+            ItemKindData::Field(f) => f.addition_diagnosis(path, collector),
+            ItemKindData::Variant(v) => v.addition_diagnosis(path, collector),
+            ItemKindData::TraitDef(t) => t.addition_diagnosis(path, collector),
+            ItemKindData::TraitImpl(t) => t.addition_diagnosis(path, collector),
+            ItemKindData::AssocType(a) => a.addition_diagnosis(path, collector),
+            ItemKindData::AssocConst(a) => a.addition_diagnosis(path, collector),
+            //ItemKind::TraitDef(t) => t.addition_diagnosis(path, collector),
         }
     }
 }
